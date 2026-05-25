@@ -68,6 +68,26 @@ preflight_checks() {
   return "$missing"
 }
 
+validate_runtime_isolation() {
+  local failed=0
+
+  if [[ "$RUN_UAV_GROUP" == "true" && "$RUN_UGV_GROUP" == "true" ]]; then
+    if [[ "$UAV_MASTER_URI" == "$UGV_MASTER_URI" ]]; then
+      echo "[config][ERROR] UAV_MASTER_URI and UGV_MASTER_URI must differ when running both robots." >&2
+      echo "[config][ERROR] shared ROS master mixes global topics such as /lio/odom and /keyframe_vae." >&2
+      failed=1
+    fi
+
+    if [[ "$UAV_GAZEBO_MASTER_URI" == "$UGV_GAZEBO_MASTER_URI" ]]; then
+      echo "[config][ERROR] UAV_GAZEBO_MASTER_URI and UGV_GAZEBO_MASTER_URI must differ when running both robots." >&2
+      echo "[config][ERROR] use separate Gazebo masters, for example 11345 for UAV and 11346 for UGV." >&2
+      failed=1
+    fi
+  fi
+
+  return "$failed"
+}
+
 ensure_loopback_alias() {
   local cidr="$1"
   local ip="${cidr%/*}"
@@ -86,7 +106,8 @@ ensure_loopback_alias() {
 
 prepare_mocha_config_arg() {
   if [[ -z "$MOCHA_ROBOT_CONFIG" ]]; then
-    MOCHA_ROBOT_CONFIG="$LOG_DIR/mocha_robot_configs.yaml"
+    MOCHA_ROBOT_CONFIG="$SESSION_STATE_DIR/mocha_robot_configs.yaml"
+    mkdir -p "$(dirname "$MOCHA_ROBOT_CONFIG")"
     if [[ "$LAMP_MODE" == "distributed" ]]; then
       cat >"$MOCHA_ROBOT_CONFIG" <<EOF
 $UGV_MOCHA_ROBOT:
@@ -142,7 +163,7 @@ EOF
 
 prepare_lamp_robot_names_config() {
   if [[ -z "$BASE_LAMP_ROBOT_NAMES_CONFIG" ]]; then
-    BASE_LAMP_ROBOT_NAMES_CONFIG="$LOG_DIR/lamp_robot_names.yaml"
+    BASE_LAMP_ROBOT_NAMES_CONFIG="$SESSION_STATE_DIR/lamp_robot_names.yaml"
   fi
 
   mkdir -p "$(dirname "$BASE_LAMP_ROBOT_NAMES_CONFIG")"
@@ -155,7 +176,7 @@ EOF
 
 prepare_base_rssi_parameters_config() {
   if [[ -z "$BASE_RSSI_PARAMETERS_CONFIG" ]]; then
-    BASE_RSSI_PARAMETERS_CONFIG="$LOG_DIR/rssi_parameters.yaml"
+    BASE_RSSI_PARAMETERS_CONFIG="$SESSION_STATE_DIR/rssi_parameters.yaml"
   fi
 
   mkdir -p "$(dirname "$BASE_RSSI_PARAMETERS_CONFIG")"

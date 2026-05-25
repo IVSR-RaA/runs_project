@@ -81,34 +81,6 @@ make_window() {
   tmux select-layout -t "$SESSION:$win" tiled >/dev/null
 }
 
-send_logged() {
-  local pane="$1"
-  local name="$2"
-  local setup="$3"
-  local ros_env="$4"
-  local cmd="$5"
-  local wait_master="${6:-true}"
-  local log="$LOG_DIR/$name.log"
-  local full_cmd="$cmd"
-  local escaped_cmd
-  local q_ws
-  local q_log_dir
-  local q_log
-
-  if [[ "$wait_master" == "true" ]]; then
-    full_cmd="$WAIT_FOR_MASTER; $cmd"
-  fi
-
-  touch "$log"
-
-  printf -v escaped_cmd '%q' "$full_cmd"
-  printf -v q_ws '%q' "$WS"
-  printf -v q_log_dir '%q' "$LOG_DIR"
-  printf -v q_log '%q' "$log"
-
-  tmux send-keys -t "$pane" "cd $q_ws; mkdir -p $q_log_dir; $setup; $ros_env; echo '[debug] log: $log'; echo '[debug] cmd: $cmd' | tee -a $q_log; stdbuf -oL -eL bash -lc $escaped_cmd 2>&1 | tee -a $q_log" C-m
-}
-
 send_plain() {
   local pane="$1"
   local setup="$2"
@@ -117,6 +89,7 @@ send_plain() {
   local wait_master="${5:-true}"
   local full_cmd="$cmd"
   local escaped_cmd
+  local q_label
   local q_ws
 
   if [[ "$wait_master" == "true" ]]; then
@@ -124,7 +97,8 @@ send_plain() {
   fi
 
   printf -v escaped_cmd '%q' "$full_cmd"
+  printf -v q_label '%q' "[cmd] $cmd"
   printf -v q_ws '%q' "$WS"
 
-  tmux send-keys -t "$pane" "cd $q_ws; $setup; $ros_env; bash -lc $escaped_cmd" C-m
+  tmux send-keys -t "$pane" "cd $q_ws; $setup; $ros_env; printf '%s\n' $q_label; exec bash -lc $escaped_cmd" C-m
 }

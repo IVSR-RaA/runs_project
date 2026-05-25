@@ -31,10 +31,6 @@ while [[ $# -gt 0 ]]; do
       # shellcheck source=/home/nlg/all_ws/run/lib/tmux_utils.sh
       source "$SCRIPT_DIR/lib/tmux_utils.sh" # ------------------------------------------------------
       if tmux has-session -t "$SESSION" 2>/dev/null; then
-        session_log_dir=""
-        if [[ -f "$SESSION_STATE_FILE" ]]; then
-          session_log_dir="$(<"$SESSION_STATE_FILE")"
-        fi
         mapfile -t pane_pids < <(
           tmux list-panes -a -F '#{session_name}:#{pane_pid}' |
             awk -F: -v session="$SESSION" '$1 == session {print $2}'
@@ -50,11 +46,6 @@ while [[ $# -gt 0 ]]; do
         for pid in "${pane_pids[@]}"; do
           kill_process_tree KILL "$pid"
         done
-        if [[ -n "$session_log_dir" ]]; then
-          pkill -TERM -f "$session_log_dir" 2>/dev/null || true
-          sleep 1
-          pkill -KILL -f "$session_log_dir" 2>/dev/null || true
-        fi
         tmux kill-session -t "$SESSION" 2>/dev/null || true
       fi
       kill_mocha_port_listeners TERM
@@ -62,7 +53,9 @@ while [[ $# -gt 0 ]]; do
       sleep 1
       kill_mocha_port_listeners KILL
       kill_gazebo_port_listeners KILL
-      rm -f "$SESSION_STATE_FILE"
+      if [[ "$SESSION_STATE_DIR" == /tmp/run_mrm_* ]]; then
+        rm -rf "$SESSION_STATE_DIR"
+      fi
       exit 0
       ;;
     --attach) tmux attach -t "$SESSION"; exit 0 ;;
@@ -109,7 +102,11 @@ if [[ "$LAMP_MODE" == "distributed" && -z "$RSSI_ROBOTS_WAS_SET" ]]; then
   RSSI_ROBOTS="$UAV_MOCHA_ROBOT $UGV_MOCHA_ROBOT"
 fi
 
-echo "[start] session=$SESSION run_only=$RUN_ONLY lamp_mode=$LAMP_MODE log_dir=$LOG_DIR"
+echo "[start] session=$SESSION run_only=$RUN_ONLY lamp_mode=$LAMP_MODE state_dir=$SESSION_STATE_DIR"
+if [[ "$LAMP_MODE" == "base" && ( "$RUN_ONLY" == "uav" || "$RUN_ONLY" == "ugv" ) ]]; then
+  echo "[start][WARN] --only $RUN_ONLY in base mode starts local robot inputs only; RViz base map/path topics need base LAMP."
+  echo "[start][WARN] Use --only $RUN_ONLY --distributed for single-robot local fusion map/path in RViz."
+fi
 echo "[tmux] checking existing session: $SESSION"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
@@ -120,8 +117,6 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   fi
   exit 0
 fi
-
-printf '%s\n' "$LOG_DIR" >"$SESSION_STATE_FILE"
 
 # Source remaining modules
 # shellcheck source=/home/nlg/all_ws/run/lib/tmux_utils.sh
@@ -136,6 +131,11 @@ source "$SCRIPT_DIR/lib/ugv_tasks.sh"
 source "$SCRIPT_DIR/lib/base_tasks.sh"
 # shellcheck source=/home/nlg/all_ws/run/lib/common_tasks.sh
 source "$SCRIPT_DIR/lib/common_tasks.sh"
+
+if ! validate_runtime_isolation; then
+  echo "[config] fatal isolation checks failed; use different ROS and Gazebo masters for UGV and UAV." >&2
+  exit 1
+fi
 
 if ! preflight_checks; then
   echo "[preflight] fatal checks failed; fix errors above or override the related environment variables." >&2
@@ -203,7 +203,7 @@ elif [[ "$RUN_ONLY" == "ugv" ]]; then
   start_ugv_visual_tools
 fi
 
-start_selected_log_windows
+start_selected_ros_diag_windows
 start_selected_manual_shells
 start_rssi_monitors
 
@@ -212,5 +212,5 @@ if [[ "$ATTACH_ON_START" == "true" ]]; then
   tmux attach -t "$SESSION"
 else
   echo "[tmux] started detached session: $SESSION"
-  echo "[tmux] logs: $LOG_DIR"
+  echo "[tmux] no run log files are written; inspect live output in tmux panes."
 fi
