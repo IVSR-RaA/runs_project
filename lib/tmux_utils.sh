@@ -47,7 +47,7 @@ kill_gazebo_port_listeners() {
   local pid
   local cmd
 
-  for uri in "$UAV_GAZEBO_MASTER_URI" "$UGV_GAZEBO_MASTER_URI" "$VISUAL_GAZEBO_MASTER_URI"; do
+  for uri in "$UAV_GAZEBO_MASTER_URI" "$UGV_GAZEBO_MASTER_URI"; do
     port="${uri##*:}"
     port="${port%%/*}"
     if [[ "$port" =~ ^[0-9]+$ ]]; then
@@ -79,34 +79,6 @@ make_window() {
     tmux select-layout -t "$SESSION:$win" tiled >/dev/null
   done
   tmux select-layout -t "$SESSION:$win" tiled >/dev/null
-}
-
-send_logged() {
-  local pane="$1"
-  local name="$2"
-  local setup="$3"
-  local ros_env="$4"
-  local cmd="$5"
-  local wait_master="${6:-true}"
-  local log="$LOG_DIR/$name.log"
-  local full_cmd="$cmd"
-  local escaped_cmd
-  local q_ws
-  local q_log_dir
-  local q_log
-
-  if [[ "$wait_master" == "true" ]]; then
-    full_cmd="$WAIT_FOR_MASTER; $cmd"
-  fi
-
-  touch "$log"
-
-  printf -v escaped_cmd '%q' "$full_cmd"
-  printf -v q_ws '%q' "$WS"
-  printf -v q_log_dir '%q' "$LOG_DIR"
-  printf -v q_log '%q' "$log"
-
-  tmux send-keys -t "$pane" "cd $q_ws; mkdir -p $q_log_dir; $setup; $ros_env; echo '[debug] log: $log'; echo '[debug] cmd: $cmd' | tee -a $q_log; stdbuf -oL -eL bash -lc $escaped_cmd 2>&1 | tee -a $q_log" C-m
 }
 
 send_plain() {

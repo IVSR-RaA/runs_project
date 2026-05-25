@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib/preflight.sh
-# Preflight checks and configuration generators
+# Preflight checks and configuration generators.
 
 preflight_checks() {
   local missing=0
@@ -9,14 +9,7 @@ preflight_checks() {
     mocha_launch
     mocha_core
     super_lio_lamp_adapter
-    tf
-    rqt_tf_tree
-  )
-  local optional_commands=(
-    rviz
-    rqt_graph
-    rqt_console
-    gzclient
+    tf2_ros
   )
 
   if [[ "$RUN_ONLY" == "all" || "$RUN_ONLY" == "uav" ]]; then
@@ -43,20 +36,9 @@ preflight_checks() {
     fi
   done
 
-  echo "[preflight] checking optional GUI commands..."
-  for cmd in "${optional_commands[@]}"; do
-    if ! bash -lc "$PREFLIGHT_SETUP; command -v '$cmd'" >/dev/null 2>&1; then
-      echo "[preflight][WARN] optional GUI command not found: $cmd" >&2
-    fi
-  done
-
   if [[ ("$RUN_ONLY" == "all" || "$RUN_ONLY" == "uav") && -z "$PX4_UAV_SDF" ]]; then
     echo "[preflight][ERROR] PX4 UAV SDF not found. Set PX4_UAV_SDF=/path/to/model.sdf" >&2
     missing=1
-  fi
-
-  if [[ ! -f "$RVIZ_CONFIG" ]]; then
-    echo "[preflight][WARN] RViz config not found: $RVIZ_CONFIG" >&2
   fi
 
   if [[ ("$RUN_ONLY" == "all" || "$RUN_ONLY" == "uav" || "$RUN_ONLY" == "ugv") && ! -f "$SIM_WORLD_FILE" ]]; then
@@ -65,7 +47,27 @@ preflight_checks() {
     missing=1
   fi
 
+  validate_runtime_isolation || missing=1
+
   return "$missing"
+}
+
+validate_runtime_isolation() {
+  if [[ "$RUN_UAV_GROUP" != "true" || "$RUN_UGV_GROUP" != "true" ]]; then
+    return 0
+  fi
+
+  if [[ "$UAV_MASTER_URI" == "$UGV_MASTER_URI" ]]; then
+    echo "[preflight][ERROR] UAV_MASTER_URI and UGV_MASTER_URI must differ when both robots run." >&2
+    return 1
+  fi
+
+  if [[ "$UAV_GAZEBO_MASTER_URI" == "$UGV_GAZEBO_MASTER_URI" ]]; then
+    echo "[preflight][ERROR] UAV_GAZEBO_MASTER_URI and UGV_GAZEBO_MASTER_URI must differ when both robots run." >&2
+    return 1
+  fi
+
+  return 0
 }
 
 ensure_loopback_alias() {
@@ -85,8 +87,10 @@ ensure_loopback_alias() {
 }
 
 prepare_mocha_config_arg() {
+  mkdir -p "$SESSION_STATE_DIR"
+
   if [[ -z "$MOCHA_ROBOT_CONFIG" ]]; then
-    MOCHA_ROBOT_CONFIG="$LOG_DIR/mocha_robot_configs.yaml"
+    MOCHA_ROBOT_CONFIG="$SESSION_STATE_DIR/mocha_robot_configs.yaml"
     if [[ "$LAMP_MODE" == "distributed" ]]; then
       cat >"$MOCHA_ROBOT_CONFIG" <<EOF
 $UGV_MOCHA_ROBOT:
@@ -142,7 +146,7 @@ EOF
 
 prepare_lamp_robot_names_config() {
   if [[ -z "$BASE_LAMP_ROBOT_NAMES_CONFIG" ]]; then
-    BASE_LAMP_ROBOT_NAMES_CONFIG="$LOG_DIR/lamp_robot_names.yaml"
+    BASE_LAMP_ROBOT_NAMES_CONFIG="$SESSION_STATE_DIR/lamp_robot_names.yaml"
   fi
 
   mkdir -p "$(dirname "$BASE_LAMP_ROBOT_NAMES_CONFIG")"
@@ -155,7 +159,7 @@ EOF
 
 prepare_base_rssi_parameters_config() {
   if [[ -z "$BASE_RSSI_PARAMETERS_CONFIG" ]]; then
-    BASE_RSSI_PARAMETERS_CONFIG="$LOG_DIR/rssi_parameters.yaml"
+    BASE_RSSI_PARAMETERS_CONFIG="$SESSION_STATE_DIR/rssi_parameters.yaml"
   fi
 
   mkdir -p "$(dirname "$BASE_RSSI_PARAMETERS_CONFIG")"

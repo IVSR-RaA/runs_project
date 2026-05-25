@@ -12,7 +12,7 @@ source "$SCRIPT_DIR/lib/config.sh" # -------------------------------------------
 usage() {
   cat <<EOF
 Usage:
-  $0              Start debug tmux session and attach.
+  $0              Start runtime tmux session and attach.
   $0 --only ugv   Start only one runtime group: uav, ugv, base, or all.
   $0 --lamp-mode base|distributed
                   LAMP topology. base is the current base-station aggregator.
@@ -31,9 +31,9 @@ while [[ $# -gt 0 ]]; do
       # shellcheck source=/home/nlg/all_ws/run/lib/tmux_utils.sh
       source "$SCRIPT_DIR/lib/tmux_utils.sh" # ------------------------------------------------------
       if tmux has-session -t "$SESSION" 2>/dev/null; then
-        session_log_dir=""
+        session_state_dir=""
         if [[ -f "$SESSION_STATE_FILE" ]]; then
-          session_log_dir="$(<"$SESSION_STATE_FILE")"
+          session_state_dir="$(<"$SESSION_STATE_FILE")"
         fi
         mapfile -t pane_pids < <(
           tmux list-panes -a -F '#{session_name}:#{pane_pid}' |
@@ -50,11 +50,6 @@ while [[ $# -gt 0 ]]; do
         for pid in "${pane_pids[@]}"; do
           kill_process_tree KILL "$pid"
         done
-        if [[ -n "$session_log_dir" ]]; then
-          pkill -TERM -f "$session_log_dir" 2>/dev/null || true
-          sleep 1
-          pkill -KILL -f "$session_log_dir" 2>/dev/null || true
-        fi
         tmux kill-session -t "$SESSION" 2>/dev/null || true
       fi
       kill_mocha_port_listeners TERM
@@ -62,6 +57,9 @@ while [[ $# -gt 0 ]]; do
       sleep 1
       kill_mocha_port_listeners KILL
       kill_gazebo_port_listeners KILL
+      if [[ -n "${session_state_dir:-}" && "$session_state_dir" == /tmp/run_mrm_* ]]; then
+        rm -rf "$session_state_dir"
+      fi
       rm -f "$SESSION_STATE_FILE"
       exit 0
       ;;
@@ -109,7 +107,7 @@ if [[ "$LAMP_MODE" == "distributed" && -z "$RSSI_ROBOTS_WAS_SET" ]]; then
   RSSI_ROBOTS="$UAV_MOCHA_ROBOT $UGV_MOCHA_ROBOT"
 fi
 
-echo "[start] session=$SESSION run_only=$RUN_ONLY lamp_mode=$LAMP_MODE log_dir=$LOG_DIR"
+echo "[start] session=$SESSION run_only=$RUN_ONLY lamp_mode=$LAMP_MODE state_dir=$SESSION_STATE_DIR"
 echo "[tmux] checking existing session: $SESSION"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
@@ -121,7 +119,8 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
   exit 0
 fi
 
-printf '%s\n' "$LOG_DIR" >"$SESSION_STATE_FILE"
+mkdir -p "$SESSION_STATE_DIR"
+printf '%s\n' "$SESSION_STATE_DIR" >"$SESSION_STATE_FILE"
 
 # Source remaining modules
 # shellcheck source=/home/nlg/all_ws/run/lib/tmux_utils.sh
@@ -180,37 +179,22 @@ start_status_window
 
 if [[ "$RUN_UAV_GROUP" == "true" ]]; then
   start_uav_runtime
-  start_uav_monitors
 fi
 
 if [[ "$RUN_UGV_GROUP" == "true" ]]; then
   start_ugv_runtime
-  start_ugv_monitors
 fi
 
 if [[ "$RUN_BASE_GROUP" == "true" ]]; then
   start_base_runtime
-  start_base_monitors
 fi
 
-if [[ "$RUN_ONLY" == "all" ]]; then
-  start_visual_tools
-elif [[ "$RUN_ONLY" == "base" ]]; then
-  start_base_visual_tools
-elif [[ "$RUN_ONLY" == "uav" ]]; then
-  start_uav_visual_tools
-elif [[ "$RUN_ONLY" == "ugv" ]]; then
-  start_ugv_visual_tools
-fi
-
-start_selected_log_windows
-start_selected_manual_shells
-start_rssi_monitors
+start_manual_shells
 
 tmux select-window -t "$SESSION:00_status"
 if [[ "$ATTACH_ON_START" == "true" ]]; then
   tmux attach -t "$SESSION"
 else
   echo "[tmux] started detached session: $SESSION"
-  echo "[tmux] logs: $LOG_DIR"
+  echo "[tmux] no run log files are written; inspect live output in tmux panes."
 fi
