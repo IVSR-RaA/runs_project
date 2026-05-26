@@ -20,6 +20,10 @@ UAV_MASTER_URI="${UAV_MASTER_URI:-http://$UAV_IP:11313}"
 UGV_MASTER_URI="${UGV_MASTER_URI:-http://$UGV_IP:11312}"
 BASE_MASTER_URI="${BASE_MASTER_URI:-http://$BASE_IP:11311}"
 
+# Single-machine simulation uses virtual loopback IP aliases. Real multi-host
+# runs should set this to false and use the IPs already assigned to WiFi/Ethernet.
+MANAGE_LOOPBACK_ALIASES="${MANAGE_LOOPBACK_ALIASES:-true}"
+
 # Keep UAV and UGV on separate Gazebo masters. With the current stacks, sharing
 # Gazebo also forces shared /gazebo services and risks global topic collisions.
 UAV_GAZEBO_MASTER_URI="${UAV_GAZEBO_MASTER_URI:-http://127.0.0.1:11345}"

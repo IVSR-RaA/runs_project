@@ -141,29 +141,33 @@ if ! preflight_checks; then
   exit 1
 fi
 
-needs_loopback_sudo=false
-if [[ "$RUN_UAV_GROUP" == "true" ]]; then
-  ip -o addr show dev lo | grep -q "inet $UAV_IP/" || needs_loopback_sudo=true
-fi
-if [[ "$RUN_UGV_GROUP" == "true" ]]; then
-  ip -o addr show dev lo | grep -q "inet $UGV_IP/" || needs_loopback_sudo=true
-fi
-if [[ "$RUN_BASE_GROUP" == "true" ]]; then
-  ip -o addr show dev lo | grep -q "inet $BASE_IP/" || needs_loopback_sudo=true
-fi
-
-if [[ "$needs_loopback_sudo" == "true" ]]; then
-  echo "[sudo] refreshing sudo credentials for missing loopback aliases..."
-  if ! sudo -v; then
-    echo "[sudo][ERROR] sudo authentication is required before loopback aliases can be added." >&2
-    exit 1
+if [[ "$MANAGE_LOOPBACK_ALIASES" == "true" ]]; then
+  needs_loopback_sudo=false
+  if [[ "$RUN_UAV_GROUP" == "true" ]]; then
+    ip -o addr show dev lo | grep -q "inet $UAV_IP/" || needs_loopback_sudo=true
   fi
-fi
+  if [[ "$RUN_UGV_GROUP" == "true" ]]; then
+    ip -o addr show dev lo | grep -q "inet $UGV_IP/" || needs_loopback_sudo=true
+  fi
+  if [[ "$RUN_BASE_GROUP" == "true" ]]; then
+    ip -o addr show dev lo | grep -q "inet $BASE_IP/" || needs_loopback_sudo=true
+  fi
 
-echo "[net] checking loopback aliases..."
-if [[ "$RUN_UAV_GROUP" == "true" ]]; then ensure_loopback_alias "$UAV_IP/24" || exit 1; fi
-if [[ "$RUN_UGV_GROUP" == "true" ]]; then ensure_loopback_alias "$UGV_IP/24" || exit 1; fi
-if [[ "$RUN_BASE_GROUP" == "true" ]]; then ensure_loopback_alias "$BASE_IP/24" || exit 1; fi
+  if [[ "$needs_loopback_sudo" == "true" ]]; then
+    echo "[sudo] refreshing sudo credentials for missing loopback aliases..."
+    if ! sudo -v; then
+      echo "[sudo][ERROR] sudo authentication is required before loopback aliases can be added." >&2
+      exit 1
+    fi
+  fi
+
+  echo "[net] checking loopback aliases..."
+  if [[ "$RUN_UAV_GROUP" == "true" ]]; then ensure_loopback_alias "$UAV_IP/24" || exit 1; fi
+  if [[ "$RUN_UGV_GROUP" == "true" ]]; then ensure_loopback_alias "$UGV_IP/24" || exit 1; fi
+  if [[ "$RUN_BASE_GROUP" == "true" ]]; then ensure_loopback_alias "$BASE_IP/24" || exit 1; fi
+else
+  echo "[net] skipping loopback alias management; using configured host IPs."
+fi
 
 prepare_mocha_config_arg
 prepare_lamp_robot_names_config
@@ -176,7 +180,7 @@ tmux set-option -t "$SESSION" history-limit 50000 >/dev/null
 tmux set-window-option -t "$SESSION" remain-on-exit on >/dev/null
 
 start_status_window
-
+# start care here----------------------------------------------------------------------------
 if [[ "$RUN_UAV_GROUP" == "true" ]]; then
   start_uav_runtime
 fi
@@ -188,7 +192,7 @@ fi
 if [[ "$RUN_BASE_GROUP" == "true" ]]; then
   start_base_runtime
 fi
-
+# end care here----------------------------------------------------------------------------
 start_manual_shells
 
 tmux select-window -t "$SESSION:00_status"
