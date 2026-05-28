@@ -239,6 +239,30 @@ cd /home/nlg/all_ws
 UGV_SPAWN_DELAY=12 ./run/run_mrm.sh --only ugv --no-attach
 ```
 
+## VAE Model Selection
+
+Both UAV and UGV currently run Super-LIO with Velodyne VLP-16 style input, so
+both default to the pcl-vae `ground` config:
+
+```text
+UAV_VAE_ROBOT_TYPE=ground
+UGV_VAE_ROBOT_TYPE=ground
+```
+
+That means both robots use:
+
+```text
+/home/nlg/all_ws/src/pcl-vae/pcl_vae/weights/ground_model_LD_32_epoch_20_batch_16_range_20_voxel_20.pth
+```
+
+The encoder and every decoder must use the same VAE robot type for a given
+robot. If the UAV is changed back to an Ouster 64 sensor/model later, run:
+
+```bash
+cd /home/nlg/all_ws
+UAV_VAE_ROBOT_TYPE=aerial ./run/run_mrm.sh --distributed --no-attach
+```
+
 ## UAV Debug Environment
 
 Run this first in every UAV debug terminal:
@@ -512,26 +536,22 @@ rqt_image_view /range_image_viz/difference_mono8
 The UAV debug mapping path uses:
 
 ```text
-odom:  /mavros/local_position/odom
+odom:  /lio/odom
 cloud: /lio/cloud_body
 ```
 
-This is intentional for the current PX4/Gazebo simulation. Super-LIO still
-generates `/lio/odom` and `/lio/cloud_world`, but `/lio/odom` can become `nan`
-after startup while `/mavros/local_position/odom` remains finite. That points to
-Super-LIO estimator divergence in the UAV simulation path, not a Gazebo pose
-failure. `/lio/cloud_world` is transformed using that Super-LIO odometry, so it
-should be treated as a Super-LIO visualization/debug output, not as the LAMP
-input in this fallback mode. LAMP receives body-frame scans from
-`/lio/cloud_body` and poses from MAVROS local odometry.
+This keeps LAMP pose and scan inputs from the same Super-LIO source. On startup,
+PX4/MAVROS can take a while to initialize IMU attitude and local odometry; during
+that period Super-LIO and `/keyframe_vae` may be quiet even though
+`/velodyne_points` is already publishing.
 
 The LAMP adapter filters non-finite XYZ points before publishing keyed scans.
 This keeps LAMP from crashing if Super-LIO still emits a cloud containing
 `nan`/`inf` points.
 
-To test pure Super-LIO odometry anyway:
+To temporarily test the PX4/MAVROS pose fallback:
 
 ```bash
 cd /home/nlg/all_ws
-UAV_ODOM_TOPIC=/lio/odom ./run/run_mrm.sh --distributed --no-attach
+UAV_ODOM_TOPIC=/mavros/local_position/odom ./run/run_mrm.sh --distributed --no-attach
 ```

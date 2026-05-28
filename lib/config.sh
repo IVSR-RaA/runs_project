@@ -81,9 +81,14 @@ UGV_IMU_TOPIC="${UGV_IMU_TOPIC:-/imu/data}"
 UAV_VAE_POINT_TOPIC="${UAV_VAE_POINT_TOPIC:-$UAV_LIDAR_TOPIC}"
 UGV_VAE_POINT_TOPIC="${UGV_VAE_POINT_TOPIC:-$UGV_LIDAR_TOPIC}"
 
-# Odometry consumed by TF, VAE keyframes, and LAMP input. UAV Super-LIO still
-# provides /lio/cloud_body, but its /lio/odom can diverge in this PX4 sim.
-UAV_ODOM_TOPIC="${UAV_ODOM_TOPIC:-/mavros/local_position/odom}"
+# VAE model/config type. Both simulated robots currently use Velodyne VLP-16
+# input through Super-LIO, so both default to the ground/VLP-16 VAE config.
+UAV_VAE_ROBOT_TYPE="${UAV_VAE_ROBOT_TYPE:-ground}"
+UGV_VAE_ROBOT_TYPE="${UGV_VAE_ROBOT_TYPE:-ground}"
+
+# Odometry consumed by TF, VAE keyframes, and LAMP input. Keep this paired with
+# /lio/cloud_body so LAMP receives pose and scan data from the same SLAM source.
+UAV_ODOM_TOPIC="${UAV_ODOM_TOPIC:-/lio/odom}"
 UGV_ODOM_TOPIC="${UGV_ODOM_TOPIC:-/lio/odom}"
 UAV_CLOUD_BODY_TOPIC="${UAV_CLOUD_BODY_TOPIC:-/lio/cloud_body}"
 UGV_CLOUD_BODY_TOPIC="${UGV_CLOUD_BODY_TOPIC:-/lio/cloud_body}"
@@ -99,10 +104,10 @@ VAE_SETUP="$COMMON_SETUP; [ -f /home/nlg/pcl-vae/env/bin/activate ] && source /h
 
 WAIT_FOR_MASTER='until rostopic list >/dev/null 2>&1; do echo "[wait] ROS master at ${ROS_MASTER_URI}"; sleep 1; done'
 WAIT_FOR_UAV_SENSORS="until rostopic list 2>/dev/null | grep -qx \"$UAV_LIDAR_TOPIC\" && rostopic list 2>/dev/null | grep -qx \"$UAV_IMU_TOPIC\"; do echo \"[wait] UAV sensor topics\"; sleep 1; done"
-WAIT_FOR_UAV_LIO_OUTPUTS='until rostopic list 2>/dev/null | grep -qx "/lio/cloud_body"; do echo "[wait] UAV Super-LIO cloud output"; sleep 1; done'
+WAIT_FOR_UAV_LIO_OUTPUTS="until rostopic list 2>/dev/null | grep -qx \"$UAV_CLOUD_BODY_TOPIC\" && timeout 2s rostopic echo -n 1 \"$UAV_ODOM_TOPIC\" >/dev/null 2>&1; do echo \"[wait] UAV Super-LIO cloud and odom output\"; sleep 1; done"
 WAIT_FOR_GAZEBO='until rosservice list 2>/dev/null | grep -qx "/gazebo/spawn_urdf_model"; do echo "[wait] Gazebo spawn service"; sleep 1; done'
 WAIT_FOR_UGV_SENSORS="until rostopic list 2>/dev/null | grep -qx \"$UGV_LIDAR_TOPIC\" && rostopic list 2>/dev/null | grep -qx \"$UGV_IMU_TOPIC\"; do echo \"[wait] UGV sensor topics\"; sleep 1; done"
-WAIT_FOR_UGV_LIO_OUTPUTS='until rostopic list 2>/dev/null | grep -qx "/lio/odom" && rostopic list 2>/dev/null | grep -qx "/lio/cloud_body"; do echo "[wait] UGV Super-LIO outputs"; sleep 1; done'
+WAIT_FOR_UGV_LIO_OUTPUTS="until rostopic list 2>/dev/null | grep -qx \"$UGV_CLOUD_BODY_TOPIC\" && timeout 2s rostopic echo -n 1 \"$UGV_ODOM_TOPIC\" >/dev/null 2>&1; do echo \"[wait] UGV Super-LIO cloud and odom output\"; sleep 1; done"
 
 resolve_px4_uav_sdf() {
   local candidate
