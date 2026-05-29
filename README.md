@@ -239,6 +239,99 @@ cd /home/nlg/all_ws
 UGV_SPAWN_DELAY=12 ./run/run_mrm.sh --only ugv --no-attach
 ```
 
+## UGV CMU Planner
+
+`./run/run_mrm.sh --only ugv` starts the CMU local planner by default. The
+planner consumes Super-LIO outputs:
+
+```text
+state estimation: /lio/odom
+registered scan:  /lio/cloud_world
+```
+
+It publishes Jackal-compatible velocity commands:
+
+```text
+/cmd_vel
+/cmd_vel2
+```
+
+The Jackal `twist_mux` forwards `/cmd_vel` to:
+
+```text
+/jackal_velocity_controller/cmd_vel
+```
+
+Disable the planner when you only want mapping:
+
+```bash
+cd /home/nlg/all_ws
+UGV_ENABLE_CMU_PLANNER=false ./run/run_mrm.sh --only ugv --no-attach
+```
+
+Tune the test speed:
+
+```bash
+cd /home/nlg/all_ws
+UGV_CMU_AUTONOMY_SPEED=0.2 UGV_CMU_WAYPOINT_SPEED=0.2 ./run/run_mrm.sh --only ugv --no-attach
+```
+
+Check planner output:
+
+```bash
+source /home/nlg/all_ws/devel/setup.bash
+export ROS_MASTER_URI=http://10.229.222.1:11312
+export ROS_IP=10.229.222.1
+rostopic hz /path /terrain_map /way_point /cmd_vel /jackal_velocity_controller/cmd_vel
+```
+
+``` bash
+rviz -d /home/nlg/all_ws/src/cmu-planner/vehicle_simulator/rviz/vehicle_simulator.rviz
+```
+
+## UAV PX4 Sequence Controller
+
+`./run/run_mrm.sh --only uav` starts the PX4 sequence-controller wrapper by
+default. The run-mrm default mission is intentionally small:
+
+```text
+/home/nlg/all_ws/src/emb/px4_controllers/sequence_controller/cfg/run_mrm_uav_takeoff_land.yaml
+```
+
+It starts `geometric_controller`, waits for MAVROS local pose, then runs the
+sequence parser. The default sequence takes off to 2 m and lands, so it tests
+the controller path without launching the older GPS/marker/avoidance scripts.
+The UAV simulator startup also requests MAVROS stream rate until
+`/mavros/imu/data` and `/mavros/local_position/pose` publish, because PX4 SITL
+can otherwise connect to MAVROS before those streams are active.
+
+Disable it for mapping-only UAV runs:
+
+```bash
+cd /home/nlg/all_ws
+UAV_ENABLE_SEQUENCE_CONTROLLER=false ./run/run_mrm.sh --only uav --no-attach
+```
+
+Run a custom sequence:
+
+```bash
+cd /home/nlg/all_ws
+UAV_SEQUENCE_YAML=/home/nlg/all_ws/src/emb/px4_controllers/sequence_controller/cfg/seq.yaml \
+UAV_SEQUENCE_RUN_GPS_SERVER=true \
+UAV_SEQUENCE_RUN_EXTERNAL_SCRIPTS=true \
+./run/run_mrm.sh --only uav --no-attach
+```
+
+Check the controller:
+
+```bash
+source /home/nlg/all_ws/devel/setup.bash
+export ROS_MASTER_URI=http://10.249.171.1:11313
+export ROS_IP=10.249.171.1
+rostopic echo -n 1 /sequence/status
+rosservice call /controller/get_mode "{}"
+rostopic hz /mavros/local_position/pose /debug/path
+```
 ## VAE Model Selection
 
 Both UAV and UGV currently run Super-LIO with Velodyne VLP-16 style input, so

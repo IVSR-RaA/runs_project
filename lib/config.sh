@@ -93,6 +93,31 @@ UGV_ODOM_TOPIC="${UGV_ODOM_TOPIC:-/lio/odom}"
 UAV_CLOUD_BODY_TOPIC="${UAV_CLOUD_BODY_TOPIC:-/lio/cloud_body}"
 UGV_CLOUD_BODY_TOPIC="${UGV_CLOUD_BODY_TOPIC:-/lio/cloud_body}"
 
+# CMU local planner integration for the UGV. It consumes Super-LIO odometry and
+# registered world cloud, then publishes Jackal-compatible /cmd_vel.
+UGV_ENABLE_CMU_PLANNER="${UGV_ENABLE_CMU_PLANNER:-true}"
+UGV_CMU_STATE_TOPIC="${UGV_CMU_STATE_TOPIC:-$UGV_ODOM_TOPIC}"
+UGV_CMU_SCAN_TOPIC="${UGV_CMU_SCAN_TOPIC:-/lio/cloud_world}"
+UGV_CMU_CMD_VEL_TOPIC="${UGV_CMU_CMD_VEL_TOPIC:-/cmd_vel}"
+UGV_CMU_CMD_VEL_STAMPED_TOPIC="${UGV_CMU_CMD_VEL_STAMPED_TOPIC:-/cmd_vel2}"
+UGV_CMU_RUN_WAYPOINTS="${UGV_CMU_RUN_WAYPOINTS:-true}"
+UGV_CMU_MAX_SPEED="${UGV_CMU_MAX_SPEED:-0.6}"
+UGV_CMU_AUTONOMY_SPEED="${UGV_CMU_AUTONOMY_SPEED:-0.4}"
+UGV_CMU_WAYPOINT_SPEED="${UGV_CMU_WAYPOINT_SPEED:-0.4}"
+UGV_CMU_WAYPOINT_FILE="${UGV_CMU_WAYPOINT_FILE:-}"
+UGV_CMU_BOUNDARY_FILE="${UGV_CMU_BOUNDARY_FILE:-}"
+
+# UAV PX4 sequence-controller integration. The default mission is intentionally
+# small for run_mrm: take off to 2 m, then land. Use UAV_SEQUENCE_YAML to run a
+# custom mission such as sequence_controller/cfg/seq.yaml.
+UAV_ENABLE_SEQUENCE_CONTROLLER="${UAV_ENABLE_SEQUENCE_CONTROLLER:-true}"
+UAV_SEQUENCE_YAML="${UAV_SEQUENCE_YAML:-$WS/src/emb/px4_controllers/sequence_controller/cfg/run_mrm_uav_takeoff_land.yaml}"
+UAV_SEQUENCE_RUN_PARSER="${UAV_SEQUENCE_RUN_PARSER:-true}"
+UAV_SEQUENCE_RUN_GEOMETRIC_CONTROLLER="${UAV_SEQUENCE_RUN_GEOMETRIC_CONTROLLER:-true}"
+UAV_SEQUENCE_RUN_GPS_SERVER="${UAV_SEQUENCE_RUN_GPS_SERVER:-false}"
+UAV_SEQUENCE_RUN_EXTERNAL_SCRIPTS="${UAV_SEQUENCE_RUN_EXTERNAL_SCRIPTS:-false}"
+UAV_SEQUENCE_MAV_NAME="${UAV_SEQUENCE_MAV_NAME:-tarot}"
+
 # Frames used by reconstruction and RViz debug commands.
 WORLD_FRAME="${WORLD_FRAME:-world}"
 UAV_LIDAR_FRAME="${UAV_LIDAR_FRAME:-$UAV_LAMP_ROBOT/lidar}"
@@ -108,6 +133,7 @@ WAIT_FOR_UAV_LIO_OUTPUTS="until rostopic list 2>/dev/null | grep -qx \"$UAV_CLOU
 WAIT_FOR_GAZEBO='until rosservice list 2>/dev/null | grep -qx "/gazebo/spawn_urdf_model"; do echo "[wait] Gazebo spawn service"; sleep 1; done'
 WAIT_FOR_UGV_SENSORS="until rostopic list 2>/dev/null | grep -qx \"$UGV_LIDAR_TOPIC\" && rostopic list 2>/dev/null | grep -qx \"$UGV_IMU_TOPIC\"; do echo \"[wait] UGV sensor topics\"; sleep 1; done"
 WAIT_FOR_UGV_LIO_OUTPUTS="until rostopic list 2>/dev/null | grep -qx \"$UGV_CLOUD_BODY_TOPIC\" && timeout 2s rostopic echo -n 1 \"$UGV_ODOM_TOPIC\" >/dev/null 2>&1; do echo \"[wait] UGV Super-LIO cloud and odom output\"; sleep 1; done"
+WAIT_FOR_UGV_CMU_INPUTS="until rostopic list 2>/dev/null | grep -qx \"$UGV_CMU_SCAN_TOPIC\" && timeout 2s rostopic echo -n 1 \"$UGV_CMU_STATE_TOPIC\" >/dev/null 2>&1; do echo \"[wait] UGV CMU planner scan and odom input\"; sleep 1; done"
 
 resolve_px4_uav_sdf() {
   local candidate

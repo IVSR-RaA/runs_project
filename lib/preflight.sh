@@ -13,11 +13,17 @@ preflight_checks() {
   )
 
   if [[ "$RUN_ONLY" == "all" || "$RUN_ONLY" == "uav" ]]; then
-    required_pkgs+=(geometric_controller mavlink_sitl_gazebo mavros px4 super_lio)
+    required_pkgs+=(geometric_controller mavlink_sitl_gazebo mavros px4 rosservice super_lio)
+    if [[ "$UAV_ENABLE_SEQUENCE_CONTROLLER" == "true" ]]; then
+      required_pkgs+=(sequence_controller controller_msgs mrm_run_launch)
+    fi
   fi
 
   if [[ "$RUN_ONLY" == "all" || "$RUN_ONLY" == "ugv" ]]; then
     required_pkgs+=(super_lio)
+    if [[ "$UGV_ENABLE_CMU_PLANNER" == "true" ]]; then
+      required_pkgs+=(local_planner terrain_analysis waypoint_example mrm_run_launch)
+    fi
   fi
 
   if [[ "$RUN_ONLY" == "all" || "$RUN_ONLY" == "base" || "$LAMP_MODE" == "distributed" ]]; then
