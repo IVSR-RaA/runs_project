@@ -128,12 +128,13 @@ PREFLIGHT_SETUP="source /opt/ros/noetic/setup.bash; source $WS/devel/setup.bash;
 VAE_SETUP="$COMMON_SETUP; [ -f /home/nlg/pcl-vae/env/bin/activate ] && source /home/nlg/pcl-vae/env/bin/activate"
 
 WAIT_FOR_MASTER='until rostopic list >/dev/null 2>&1; do echo "[wait] ROS master at ${ROS_MASTER_URI}"; sleep 1; done'
+LIO_OUTPUT_ECHO_TIMEOUT="${LIO_OUTPUT_ECHO_TIMEOUT:-10}"
 WAIT_FOR_UAV_SENSORS="until rostopic list 2>/dev/null | grep -qx \"$UAV_LIDAR_TOPIC\" && rostopic list 2>/dev/null | grep -qx \"$UAV_IMU_TOPIC\"; do echo \"[wait] UAV sensor topics\"; sleep 1; done"
-WAIT_FOR_UAV_LIO_OUTPUTS="until rostopic list 2>/dev/null | grep -qx \"$UAV_CLOUD_BODY_TOPIC\" && timeout 2s rostopic echo -n 1 \"$UAV_ODOM_TOPIC\" >/dev/null 2>&1; do echo \"[wait] UAV Super-LIO cloud and odom output\"; sleep 1; done"
+WAIT_FOR_UAV_LIO_OUTPUTS="until rostopic list 2>/dev/null | grep -qx \"$UAV_CLOUD_BODY_TOPIC\" && timeout ${LIO_OUTPUT_ECHO_TIMEOUT}s rostopic echo -n 1 \"$UAV_ODOM_TOPIC\" >/dev/null 2>&1; do echo \"[wait] UAV Super-LIO cloud and odom output\"; sleep 1; done"
 WAIT_FOR_GAZEBO='until rosservice list 2>/dev/null | grep -qx "/gazebo/spawn_urdf_model"; do echo "[wait] Gazebo spawn service"; sleep 1; done'
 WAIT_FOR_UGV_SENSORS="until rostopic list 2>/dev/null | grep -qx \"$UGV_LIDAR_TOPIC\" && rostopic list 2>/dev/null | grep -qx \"$UGV_IMU_TOPIC\"; do echo \"[wait] UGV sensor topics\"; sleep 1; done"
-WAIT_FOR_UGV_LIO_OUTPUTS="until rostopic list 2>/dev/null | grep -qx \"$UGV_CLOUD_BODY_TOPIC\" && timeout 2s rostopic echo -n 1 \"$UGV_ODOM_TOPIC\" >/dev/null 2>&1; do echo \"[wait] UGV Super-LIO cloud and odom output\"; sleep 1; done"
-WAIT_FOR_UGV_CMU_INPUTS="until rostopic list 2>/dev/null | grep -qx \"$UGV_CMU_SCAN_TOPIC\" && timeout 2s rostopic echo -n 1 \"$UGV_CMU_STATE_TOPIC\" >/dev/null 2>&1; do echo \"[wait] UGV CMU planner scan and odom input\"; sleep 1; done"
+WAIT_FOR_UGV_LIO_OUTPUTS="until rostopic list 2>/dev/null | grep -qx \"$UGV_CLOUD_BODY_TOPIC\" && timeout ${LIO_OUTPUT_ECHO_TIMEOUT}s rostopic echo -n 1 \"$UGV_ODOM_TOPIC\" >/dev/null 2>&1; do echo \"[wait] UGV Super-LIO cloud and odom output\"; sleep 1; done"
+WAIT_FOR_UGV_CMU_INPUTS="until rostopic list 2>/dev/null | grep -qx \"$UGV_CMU_SCAN_TOPIC\" && timeout ${LIO_OUTPUT_ECHO_TIMEOUT}s rostopic echo -n 1 \"$UGV_CMU_STATE_TOPIC\" >/dev/null 2>&1; do echo \"[wait] UGV CMU planner scan and odom input\"; sleep 1; done"
 
 resolve_px4_uav_sdf() {
   local candidate
