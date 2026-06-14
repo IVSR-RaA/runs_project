@@ -10,31 +10,39 @@ Session: $SESSION
 State directory: $SESSION_STATE_DIR
 Run only: $RUN_ONLY
 LAMP mode: $LAMP_MODE
+Start delays: UAV=$UAV_START_DELAY s, UGV=$UGV_START_DELAY s, Husky=$HUSKY_START_DELAY s, Base=$BASE_START_DELAY s
 
 ROS masters:
   UAV:  $UAV_MASTER_URI
   UGV:  $UGV_MASTER_URI
+  Husky: $HUSKY_MASTER_URI
   Base: $BASE_MASTER_URI
 
 Gazebo masters:
   UAV: $UAV_GAZEBO_MASTER_URI
   UGV: $UGV_GAZEBO_MASTER_URI
+  Husky: $HUSKY_GAZEBO_MASTER_URI
 
 Names:
   UAV MOCHA=$UAV_MOCHA_ROBOT, LAMP=$UAV_LAMP_ROBOT, lidar=$UAV_LIDAR_TOPIC, odom=$UAV_ODOM_TOPIC
   UAV sequence controller enabled=$UAV_ENABLE_SEQUENCE_CONTROLLER, yaml=$UAV_SEQUENCE_YAML
   UGV MOCHA=$UGV_MOCHA_ROBOT, LAMP=$UGV_LAMP_ROBOT, lidar=$UGV_LIDAR_TOPIC, odom=$UGV_ODOM_TOPIC
   UGV CMU planner enabled=$UGV_ENABLE_CMU_PLANNER, scan=$UGV_CMU_SCAN_TOPIC, cmd=$UGV_CMU_CMD_VEL_TOPIC
-  Distributed fusion namespaces: UAV=$UAV_FUSION_NAMESPACE, UGV=$UGV_FUSION_NAMESPACE
+  Husky MOCHA=$HUSKY_MOCHA_ROBOT, LAMP=$HUSKY_LAMP_ROBOT, lidar=$HUSKY_LIDAR_TOPIC, odom=$HUSKY_ODOM_TOPIC
+  Husky CMU planner enabled=$HUSKY_ENABLE_CMU_PLANNER, scan=$HUSKY_CMU_SCAN_TOPIC, cmd=$HUSKY_CMU_CMD_VEL_TOPIC
+  SOLiD loop condition enabled=$USE_SOLID_LOOP_CONDITION, threshold=$SOLID_SIMILARITY_THRESHOLD
+  Distributed fusion namespaces: UAV=$UAV_FUSION_NAMESPACE, UGV=$UGV_FUSION_NAMESPACE, Husky=$HUSKY_FUSION_NAMESPACE
   Simulation world: $SIM_WORLD_FILE
 
 Runtime windows:
   01_uav_run     UAV runtime
   02_ugv_run     UGV runtime
-  03_base_run    Base station runtime, only in base mode
-  04_uav_manual  Six UAV manual shells, if UAV is running
-  05_ugv_manual  Six UGV manual shells, if UGV is running
-  06_base_manual Six base manual shells, if base is running
+  03_husky_run   Husky runtime
+  04_base_run    Base station runtime, only in base mode
+  05_uav_manual  Six UAV manual shells, if UAV is running
+  06_ugv_manual  Six UGV manual shells, if UGV is running
+  07_husky_manual Six Husky manual shells, if Husky is running
+  08_base_manual Six base manual shells, if base is running
 
 Stop:
   ./run/run_mrm.sh --kill
@@ -55,6 +63,16 @@ distributed_base1_compat_relays() {
   printf '%s' "rosrun topic_tools relay /$fusion_namespace/pose_graph_visualizer/loop_edges /base1/pose_graph_visualizer/loop_edges __name:=${relay_prefix}_loop_edges_to_base1 & "
 }
 
+fake_rssi_command() {
+  local topics="["
+  local robot
+  for robot in $RSSI_ROBOTS; do
+    topics+="\"/ddb/tplink/rssi/$robot\", "
+  done
+  topics="${topics%, }]"
+  printf "rosrun mocha_core fake_rssi.py _rssi_topics:='%s'" "$topics"
+}
+
 start_manual_window() {
   local window="$1"
   local ros_env="$2"
@@ -68,14 +86,18 @@ start_manual_window() {
 
 start_manual_shells() {
   if [[ "$RUN_UAV_GROUP" == "true" ]]; then
-    start_manual_window "04_uav_manual" "$UAV_ROS_ENV" "UAV"
+    start_manual_window "05_uav_manual" "$UAV_ROS_ENV" "UAV"
   fi
 
   if [[ "$RUN_UGV_GROUP" == "true" ]]; then
-    start_manual_window "05_ugv_manual" "$UGV_ROS_ENV" "UGV"
+    start_manual_window "06_ugv_manual" "$UGV_ROS_ENV" "UGV"
+  fi
+
+  if [[ "$RUN_HUSKY_GROUP" == "true" ]]; then
+    start_manual_window "07_husky_manual" "$HUSKY_ROS_ENV" "Husky"
   fi
 
   if [[ "$RUN_BASE_GROUP" == "true" ]]; then
-    start_manual_window "06_base_manual" "$BASE_ROS_ENV" "Base"
+    start_manual_window "08_base_manual" "$BASE_ROS_ENV" "Base"
   fi
 }

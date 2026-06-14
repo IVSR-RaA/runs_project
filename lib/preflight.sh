@@ -26,12 +26,27 @@ preflight_checks() {
     fi
   fi
 
+  if [[ "$RUN_ONLY" == "all" || "$RUN_ONLY" == "husky" ]]; then
+    required_pkgs+=(husky_description husky_gazebo husky_control super_lio)
+    if [[ "$HUSKY_ENABLE_CMU_PLANNER" == "true" ]]; then
+      required_pkgs+=(local_planner terrain_analysis waypoint_example mrm_run_launch)
+    fi
+  fi
+
   if [[ "$RUN_ONLY" == "all" || "$RUN_ONLY" == "base" || "$LAMP_MODE" == "distributed" ]]; then
     required_pkgs+=(lamp)
   fi
 
   if [[ "$LAMP_MODE" == "distributed" ]]; then
     required_pkgs+=(topic_tools)
+  fi
+
+  if [[ "$UAV_ENABLE_CAMERA" == "true" || "$UGV_ENABLE_CAMERA" == "true" || "$HUSKY_ENABLE_CAMERA" == "true" ]]; then
+    required_pkgs+=(gazebo_plugins mrm_run_launch)
+  fi
+
+  if [[ "$UAV_ENABLE_YOLO" == "true" || "$UGV_ENABLE_YOLO" == "true" || "$HUSKY_ENABLE_YOLO" == "true" ]]; then
+    required_pkgs+=(mrm_yolo vision_msgs cv_bridge)
   fi
 
   echo "[preflight] checking ROS packages..."
@@ -42,38 +57,124 @@ preflight_checks() {
     fi
   done
 
+  if [[ "$UAV_ENABLE_YOLO" == "true" || "$UGV_ENABLE_YOLO" == "true" || "$HUSKY_ENABLE_YOLO" == "true" ]]; then
+    if ! bash -lc "$YOLO_SETUP; python3 -c 'import ultralytics'" >/dev/null 2>&1; then
+      echo "[preflight][ERROR] YOLO is enabled but Python cannot import ultralytics." >&2
+      echo "[preflight][ERROR] Install it with: python3 -m pip install --user ultralytics" >&2
+      echo "[preflight][ERROR] Or set YOLO_SETUP='source ~/.bashrc; source /path/to/venv/bin/activate'." >&2
+      missing=1
+    fi
+  fi
+
   if [[ ("$RUN_ONLY" == "all" || "$RUN_ONLY" == "uav") && -z "$PX4_UAV_SDF" ]]; then
     echo "[preflight][ERROR] PX4 UAV SDF not found. Set PX4_UAV_SDF=/path/to/model.sdf" >&2
     missing=1
   fi
 
-  if [[ ("$RUN_ONLY" == "all" || "$RUN_ONLY" == "uav" || "$RUN_ONLY" == "ugv") && ! -f "$SIM_WORLD_FILE" ]]; then
+  if [[ ("$RUN_ONLY" == "all" || "$RUN_ONLY" == "uav" || "$RUN_ONLY" == "ugv" || "$RUN_ONLY" == "husky") && ! -f "$SIM_WORLD_FILE" ]]; then
     echo "[preflight][ERROR] simulation world file not found: $SIM_WORLD_FILE" >&2
     echo "[preflight][ERROR] set SIM_WORLD_FILE=/path/to/world.world if you want a different world." >&2
     missing=1
   fi
 
   validate_runtime_isolation || missing=1
+  validate_start_delays || missing=1
 
   return "$missing"
 }
 
+validate_start_delays() {
+  local failed=0
+  local variable
+  local value
+
+  for variable in UAV_START_DELAY UGV_START_DELAY HUSKY_START_DELAY BASE_START_DELAY; do
+    value="${!variable}"
+    if [[ ! "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+      echo "[preflight][ERROR] $variable must be a non-negative number of seconds, got: $value" >&2
+      failed=1
+    fi
+  done
+
+  return "$failed"
+}
+
 validate_runtime_isolation() {
-  if [[ "$RUN_UAV_GROUP" != "true" || "$RUN_UGV_GROUP" != "true" ]]; then
-    return 0
+  local failed=0
+
+  if [[ "$RUN_UAV_GROUP" == "true" && "$RUN_UGV_GROUP" == "true" ]]; then
+    if [[ "$UAV_MASTER_URI" == "$UGV_MASTER_URI" ]]; then
+      echo "[preflight][ERROR] UAV_MASTER_URI and UGV_MASTER_URI must differ when both robots run." >&2
+      failed=1
+    fi
+    if [[ "$UAV_GAZEBO_MASTER_URI" == "$UGV_GAZEBO_MASTER_URI" ]]; then
+      echo "[preflight][ERROR] UAV_GAZEBO_MASTER_URI and UGV_GAZEBO_MASTER_URI must differ when both robots run." >&2
+      failed=1
+    fi
   fi
 
-  if [[ "$UAV_MASTER_URI" == "$UGV_MASTER_URI" ]]; then
-    echo "[preflight][ERROR] UAV_MASTER_URI and UGV_MASTER_URI must differ when both robots run." >&2
-    return 1
+  if [[ "$RUN_UAV_GROUP" == "true" && "$RUN_HUSKY_GROUP" == "true" ]]; then
+    if [[ "$UAV_MASTER_URI" == "$HUSKY_MASTER_URI" ]]; then
+      echo "[preflight][ERROR] UAV_MASTER_URI and HUSKY_MASTER_URI must differ when both robots run." >&2
+      failed=1
+    fi
+    if [[ "$UAV_GAZEBO_MASTER_URI" == "$HUSKY_GAZEBO_MASTER_URI" ]]; then
+      echo "[preflight][ERROR] UAV_GAZEBO_MASTER_URI and HUSKY_GAZEBO_MASTER_URI must differ when both robots run." >&2
+      failed=1
+    fi
   fi
 
-  if [[ "$UAV_GAZEBO_MASTER_URI" == "$UGV_GAZEBO_MASTER_URI" ]]; then
-    echo "[preflight][ERROR] UAV_GAZEBO_MASTER_URI and UGV_GAZEBO_MASTER_URI must differ when both robots run." >&2
-    return 1
+  if [[ "$RUN_UGV_GROUP" == "true" && "$RUN_HUSKY_GROUP" == "true" ]]; then
+    if [[ "$UGV_MASTER_URI" == "$HUSKY_MASTER_URI" ]]; then
+      echo "[preflight][ERROR] UGV_MASTER_URI and HUSKY_MASTER_URI must differ when both robots run." >&2
+      failed=1
+    fi
+    if [[ "$UGV_GAZEBO_MASTER_URI" == "$HUSKY_GAZEBO_MASTER_URI" ]]; then
+      echo "[preflight][ERROR] UGV_GAZEBO_MASTER_URI and HUSKY_GAZEBO_MASTER_URI must differ when both robots run." >&2
+      failed=1
+    fi
   fi
 
-  return 0
+  return "$failed"
+}
+
+all_mocha_robot_names() {
+  printf '%s\n' "$UGV_MOCHA_ROBOT" "$UAV_MOCHA_ROBOT" "$HUSKY_MOCHA_ROBOT"
+}
+
+all_lamp_robot_names() {
+  printf '%s\n' "$UGV_LAMP_ROBOT" "$UAV_LAMP_ROBOT" "$HUSKY_LAMP_ROBOT"
+}
+
+mocha_robot_node_type() {
+  case "$1" in
+    "$UAV_MOCHA_ROBOT") printf '%s\n' "aerial_robot" ;;
+    *) printf '%s\n' "ground_robot" ;;
+  esac
+}
+
+mocha_robot_ip() {
+  case "$1" in
+    "$UAV_MOCHA_ROBOT") printf '%s\n' "$UAV_IP" ;;
+    "$UGV_MOCHA_ROBOT") printf '%s\n' "$UGV_IP" ;;
+    "$HUSKY_MOCHA_ROBOT") printf '%s\n' "$HUSKY_IP" ;;
+  esac
+}
+
+mocha_robot_radio() {
+  case "$1" in
+    "$UAV_MOCHA_ROBOT") printf '%s\n' "radio_uav" ;;
+    "$UGV_MOCHA_ROBOT") printf '%s\n' "radio_ugv" ;;
+    "$HUSKY_MOCHA_ROBOT") printf '%s\n' "radio_husky" ;;
+  esac
+}
+
+mocha_robot_port() {
+  case "$1" in
+    "$UAV_MOCHA_ROBOT") printf '%s\n' "6234" ;;
+    "$UGV_MOCHA_ROBOT") printf '%s\n' "2234" ;;
+    "$HUSKY_MOCHA_ROBOT") printf '%s\n' "7234" ;;
+  esac
 }
 
 ensure_loopback_alias() {
@@ -97,25 +198,8 @@ prepare_mocha_config_arg() {
 
   if [[ -z "$MOCHA_ROBOT_CONFIG" ]]; then
     MOCHA_ROBOT_CONFIG="$SESSION_STATE_DIR/mocha_robot_configs.yaml"
-    if [[ "$LAMP_MODE" == "distributed" ]]; then
-      cat >"$MOCHA_ROBOT_CONFIG" <<EOF
-$UGV_MOCHA_ROBOT:
-  node-type: "ground_robot"
-  IP-address: "$UGV_IP"
-  using-radio: "radio_ugv"
-  base-port: "2234"
-  clients:
-    - "$UAV_MOCHA_ROBOT"
-
-$UAV_MOCHA_ROBOT:
-  node-type: "aerial_robot"
-  IP-address: "$UAV_IP"
-  using-radio: "radio_uav"
-  base-port: "6234"
-  clients:
-    - "$UGV_MOCHA_ROBOT"
-EOF
-    else
+    mapfile -t mocha_robots < <(all_mocha_robot_names)
+    if [[ "$LAMP_MODE" != "distributed" ]]; then
       cat >"$MOCHA_ROBOT_CONFIG" <<EOF
 basestation:
   node-type: "base_station"
@@ -123,28 +207,37 @@ basestation:
   using-radio: "radio_base"
   base-port: "1234"
   clients:
-    - "$UGV_MOCHA_ROBOT"
-    - "$UAV_MOCHA_ROBOT"
-
-$UGV_MOCHA_ROBOT:
-  node-type: "ground_robot"
-  IP-address: "$UGV_IP"
-  using-radio: "radio_ugv"
-  base-port: "2234"
-  clients:
-    - "$UAV_MOCHA_ROBOT"
-    - "basestation"
-
-$UAV_MOCHA_ROBOT:
-  node-type: "aerial_robot"
-  IP-address: "$UAV_IP"
-  using-radio: "radio_uav"
-  base-port: "6234"
-  clients:
-    - "$UGV_MOCHA_ROBOT"
-    - "basestation"
 EOF
+      local robot
+      for robot in "${mocha_robots[@]}"; do
+        printf '    - "%s"\n' "$robot" >>"$MOCHA_ROBOT_CONFIG"
+      done
+      printf '\n' >>"$MOCHA_ROBOT_CONFIG"
+    else
+      : >"$MOCHA_ROBOT_CONFIG"
     fi
+
+    local robot
+    local peer
+    for robot in "${mocha_robots[@]}"; do
+      cat >>"$MOCHA_ROBOT_CONFIG" <<EOF
+$robot:
+  node-type: "$(mocha_robot_node_type "$robot")"
+  IP-address: "$(mocha_robot_ip "$robot")"
+  using-radio: "$(mocha_robot_radio "$robot")"
+  base-port: "$(mocha_robot_port "$robot")"
+  clients:
+EOF
+      for peer in "${mocha_robots[@]}"; do
+        if [[ "$peer" != "$robot" ]]; then
+          printf '    - "%s"\n' "$peer" >>"$MOCHA_ROBOT_CONFIG"
+        fi
+      done
+      if [[ "$LAMP_MODE" != "distributed" ]]; then
+        printf '    - "basestation"\n' >>"$MOCHA_ROBOT_CONFIG"
+      fi
+      printf '\n' >>"$MOCHA_ROBOT_CONFIG"
+    done
   fi
 
   MOCHA_ROBOT_CONFIG_ARG="robot_configs:=$MOCHA_ROBOT_CONFIG"
@@ -156,11 +249,13 @@ prepare_lamp_robot_names_config() {
   fi
 
   mkdir -p "$(dirname "$BASE_LAMP_ROBOT_NAMES_CONFIG")"
-  cat >"$BASE_LAMP_ROBOT_NAMES_CONFIG" <<EOF
-robot_names:
-  - '$UAV_LAMP_ROBOT'
-  - '$UGV_LAMP_ROBOT'
-EOF
+  {
+    printf 'robot_names:\n'
+    local robot
+    while IFS= read -r robot; do
+      printf "  - '%s'\n" "$robot"
+    done < <(all_lamp_robot_names)
+  } >"$BASE_LAMP_ROBOT_NAMES_CONFIG"
 }
 
 prepare_base_rssi_parameters_config() {
@@ -169,10 +264,13 @@ prepare_base_rssi_parameters_config() {
   fi
 
   mkdir -p "$(dirname "$BASE_RSSI_PARAMETERS_CONFIG")"
+  local robots_loop_closure
+  robots_loop_closure="$(printf "'%s', " "$UGV_LAMP_ROBOT" "$UAV_LAMP_ROBOT" "$HUSKY_LAMP_ROBOT")"
+  robots_loop_closure="${robots_loop_closure%, }"
   cat >"$BASE_RSSI_PARAMETERS_CONFIG" <<EOF
 update_rate: 1.0
 acceptable_shortest_rssi_distance: 60
-robots_loop_closure: ['$UAV_LAMP_ROBOT', '$UGV_LAMP_ROBOT']
+robots_loop_closure: [$robots_loop_closure]
 radio_loop_closure_method: "nodes_to_nodes"
 close_keys_threshold: 20
 EOF

@@ -34,7 +34,7 @@ kill_mocha_port_listeners() {
     fi
   done < <(
     ss -ltnp 2>/dev/null |
-      sed -nE 's/.*:(1234|2234|6234)[[:space:]].*pid=([0-9]+).*/\2/p' |
+      sed -nE 's/.*:(1234|2234|6234|7234)[[:space:]].*pid=([0-9]+).*/\2/p' |
       sort -u
   )
 }
@@ -47,7 +47,7 @@ kill_gazebo_port_listeners() {
   local pid
   local cmd
 
-  for uri in "$UAV_GAZEBO_MASTER_URI" "$UGV_GAZEBO_MASTER_URI"; do
+  for uri in "$UAV_GAZEBO_MASTER_URI" "$UGV_GAZEBO_MASTER_URI" "$HUSKY_GAZEBO_MASTER_URI"; do
     port="${uri##*:}"
     port="${port%%/*}"
     if [[ "$port" =~ ^[0-9]+$ ]]; then

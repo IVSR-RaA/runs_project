@@ -13,10 +13,16 @@ usage() {
   cat <<EOF
 Usage:
   $0              Start runtime tmux session and attach.
-  $0 --only ugv   Start only one runtime group: uav, ugv, base, or all.
+  $0 --only ugv   Start only one runtime group: uav, ugv, husky, base, or all.
   $0 --lamp-mode base|distributed
                   LAMP topology. base is the current base-station aggregator.
                   distributed runs one fusion LAMP process on each robot master.
+  $0 --distributed
+                  Shortcut for --lamp-mode distributed.
+  USE_SOLID_LOOP_CONDITION=true $0 --no-attach
+                  Enable SOLiD descriptor filtering before LAMP loop verification.
+  HUSKY_START_DELAY=300 $0 --distributed --no-attach
+                  Start the Husky runtime group five minutes after the others.
   $0 --no-attach  Start tmux session detached and return.
   $0 --attach    Attach to existing session.
   $0 --kill      Kill existing session.
@@ -75,8 +81,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$RUN_ONLY" in
-  all | uav | ugv | base) ;;
-  *) echo "[usage][ERROR] --only must be one of: all, uav, ugv, base" >&2; exit 1 ;;
+  all | uav | ugv | husky | base) ;;
+  *) echo "[usage][ERROR] --only must be one of: all, uav, ugv, husky, base" >&2; exit 1 ;;
 esac
 
 case "$LAMP_MODE" in
@@ -91,20 +97,23 @@ fi
 
 RUN_UAV_GROUP=false
 RUN_UGV_GROUP=false
+RUN_HUSKY_GROUP=false
 RUN_BASE_GROUP=false
 case "$RUN_ONLY" in
   all)
     RUN_UAV_GROUP=true
     RUN_UGV_GROUP=true
+    RUN_HUSKY_GROUP=true
     if [[ "$LAMP_MODE" == "base" ]]; then RUN_BASE_GROUP=true; fi
     ;;
   uav) RUN_UAV_GROUP=true ;;
   ugv) RUN_UGV_GROUP=true ;;
+  husky) RUN_HUSKY_GROUP=true ;;
   base) RUN_BASE_GROUP=true ;;
 esac
 
 if [[ "$LAMP_MODE" == "distributed" && -z "$RSSI_ROBOTS_WAS_SET" ]]; then
-  RSSI_ROBOTS="$UAV_MOCHA_ROBOT $UGV_MOCHA_ROBOT"
+  RSSI_ROBOTS="$UAV_MOCHA_ROBOT $UGV_MOCHA_ROBOT $HUSKY_MOCHA_ROBOT"
 fi
 
 echo "[start] session=$SESSION run_only=$RUN_ONLY lamp_mode=$LAMP_MODE state_dir=$SESSION_STATE_DIR"
@@ -122,6 +131,11 @@ fi
 mkdir -p "$SESSION_STATE_DIR"
 printf '%s\n' "$SESSION_STATE_DIR" >"$SESSION_STATE_FILE"
 
+if ! prepare_camera_assets; then
+  echo "[camera] fatal camera asset preparation failed." >&2
+  exit 1
+fi
+
 # Source remaining modules
 # shellcheck source=/home/nlg/all_ws/run/lib/tmux_utils.sh
 source "$SCRIPT_DIR/lib/tmux_utils.sh"
@@ -131,6 +145,8 @@ source "$SCRIPT_DIR/lib/preflight.sh"
 source "$SCRIPT_DIR/lib/uav_tasks.sh"
 # shellcheck source=/home/nlg/all_ws/run/lib/ugv_tasks.sh
 source "$SCRIPT_DIR/lib/ugv_tasks.sh"
+# shellcheck source=/home/nlg/all_ws/run/lib/husky_tasks.sh
+source "$SCRIPT_DIR/lib/husky_tasks.sh"
 # shellcheck source=/home/nlg/all_ws/run/lib/base_tasks.sh
 source "$SCRIPT_DIR/lib/base_tasks.sh"
 # shellcheck source=/home/nlg/all_ws/run/lib/common_tasks.sh
@@ -149,6 +165,9 @@ if [[ "$MANAGE_LOOPBACK_ALIASES" == "true" ]]; then
   if [[ "$RUN_UGV_GROUP" == "true" ]]; then
     ip -o addr show dev lo | grep -q "inet $UGV_IP/" || needs_loopback_sudo=true
   fi
+  if [[ "$RUN_HUSKY_GROUP" == "true" ]]; then
+    ip -o addr show dev lo | grep -q "inet $HUSKY_IP/" || needs_loopback_sudo=true
+  fi
   if [[ "$RUN_BASE_GROUP" == "true" ]]; then
     ip -o addr show dev lo | grep -q "inet $BASE_IP/" || needs_loopback_sudo=true
   fi
@@ -164,6 +183,7 @@ if [[ "$MANAGE_LOOPBACK_ALIASES" == "true" ]]; then
   echo "[net] checking loopback aliases..."
   if [[ "$RUN_UAV_GROUP" == "true" ]]; then ensure_loopback_alias "$UAV_IP/24" || exit 1; fi
   if [[ "$RUN_UGV_GROUP" == "true" ]]; then ensure_loopback_alias "$UGV_IP/24" || exit 1; fi
+  if [[ "$RUN_HUSKY_GROUP" == "true" ]]; then ensure_loopback_alias "$HUSKY_IP/24" || exit 1; fi
   if [[ "$RUN_BASE_GROUP" == "true" ]]; then ensure_loopback_alias "$BASE_IP/24" || exit 1; fi
 else
   echo "[net] skipping loopback alias management; using configured host IPs."
@@ -187,6 +207,10 @@ fi
 
 if [[ "$RUN_UGV_GROUP" == "true" ]]; then
   start_ugv_runtime
+fi
+
+if [[ "$RUN_HUSKY_GROUP" == "true" ]]; then
+  start_husky_runtime
 fi
 
 if [[ "$RUN_BASE_GROUP" == "true" ]]; then
