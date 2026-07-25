@@ -15,19 +15,30 @@
 
 ---
 
-## Repositories
+## Demo Video
 
-| Repository | Link | Mô tả |
+**Husky UGV exploring an abandoned mine environment (50× speed)**
+
+<video src="husky_abandoned_x50.mp4" controls width="100%" style="max-width:800px">
+  <a href="husky_abandoned_x50.mp4">Download demo video (husky_abandoned_x50.mp4)</a>
+</video>
+
+> 💡 If the video does not play above, [click here to download it](husky_abandoned_x50.mp4)
+> or watch the full playlist on [YouTube](https://www.youtube.com/playlist?list=PLER8n99Vgcew).
+
+---
+
+| Repository | Link | Description |
 |---|---|---|
-| **runs_project** | [IVSR-RaA/runs_project](https://github.com/IVSR-RaA/runs_project) | Script khởi động toàn bộ hệ thống MRM (file này), cấu hình mạng, missions |
-| **Super-LIO** | [IVSR-RaA/Super-LIO](https://github.com/IVSR-RaA/Super-LIO) | LiDAR-Inertial Odometry (SLAM front-end) cho UAV, Jackal và Husky |
-| **super_lio_lamp_adapter** | [IVSR-RaA/super_lio_lamp_adapter](https://github.com/IVSR-RaA/super_lio_lamp_adapter) | Bridge chuyển đổi output Super-LIO → LAMP, VAE keyframe pipeline |
-| **pcl-vae** | [IVSR-RaA/pcl-vae](https://github.com/IVSR-RaA/pcl-vae) | Variational Autoencoder nén point cloud để truyền qua MOCHA |
-| **mocha_tplink** | [IVSR-RaA/mocha_tplink](https://github.com/IVSR-RaA/mocha_tplink) | Multi-robot Communication Hub — đồng bộ keyframe VAE giữa các robot qua ZeroMQ |
-| **mrm_run_launch** | [IVSR-RaA/mrm_run_launch](https://github.com/IVSR-RaA/mrm_run_launch) | ROS launch files cho toàn bộ stack (UAV, UGV, Husky, base) |
-| **cmu-planner** | [IVSR-RaA/cmu-planner](https://github.com/IVSR-RaA/cmu-planner) | CMU local planner + waypoint example cho Jackal/Husky ground navigation |
-| **emb** | [IVSR-RaA/emb](https://github.com/IVSR-RaA/emb) | PX4/geometric controller, sequence controller, EGO-Planner cho UAV |
-| **multirobot_yolo** | [IVSR-RaA/multirobot_yolo](https://github.com/IVSR-RaA/multirobot_yolo) | YOLOv8 object detection tích hợp cho tất cả robot trong hệ thống |
+| **runs_project** | [IVSR-RaA/runs_project](https://github.com/IVSR-RaA/runs_project) | Main launch scripts for the MRM system, network configuration, and mission files |
+| **Super-LIO** | [IVSR-RaA/Super-LIO](https://github.com/IVSR-RaA/Super-LIO) | LiDAR-Inertial Odometry (SLAM front-end) for the UAV, Jackal, and Husky |
+| **super_lio_lamp_adapter** | [IVSR-RaA/super_lio_lamp_adapter](https://github.com/IVSR-RaA/super_lio_lamp_adapter) | Adapter bridging Super-LIO output to LAMP and the VAE keyframe pipeline |
+| **pcl-vae** | [IVSR-RaA/pcl-vae](https://github.com/IVSR-RaA/pcl-vae) | Variational Autoencoder for point cloud compression before MOCHA transmission |
+| **mocha_tplink** | [IVSR-RaA/mocha_tplink](https://github.com/IVSR-RaA/mocha_tplink) | Multi-robot Communication Hub — synchronizes VAE keyframes across robots via ZeroMQ |
+| **mrm_run_launch** | [IVSR-RaA/mrm_run_launch](https://github.com/IVSR-RaA/mrm_run_launch) | ROS launch files for the full MRM stack (UAV, UGV, Husky, base station) |
+| **cmu-planner** | [IVSR-RaA/cmu-planner](https://github.com/IVSR-RaA/cmu-planner) | CMU local planner and waypoint follower for Jackal/Husky ground navigation |
+| **emb** | [IVSR-RaA/emb](https://github.com/IVSR-RaA/emb) | PX4 geometric controller, sequence controller, and EGO-Planner for the UAV |
+| **multirobot_yolo** | [IVSR-RaA/multirobot_yolo](https://github.com/IVSR-RaA/multirobot_yolo) | YOLOv8 object detection integrated across all robots in the system |
 
 ---
 
