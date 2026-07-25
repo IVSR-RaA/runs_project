@@ -1,4 +1,37 @@
-# run_mrm Runtime Guide
+# MRM Multi-Robot System — Runtime Guide
+
+> **Video Demo:** 🎥 [YouTube Playlist — MRM System Demonstrations](https://www.youtube.com/playlist?list=PLER8n99Vgcew)
+
+---
+
+## System Overview
+
+| | |
+|:---:|:---:|
+| ![Three robots (Tarot UAV, Jackal UGV, Husky) deployed together in Gazebo simulation](tarot_jackal_husky.png) | ![Full system pipeline overview from LiDAR sensing to collaborative map fusion](pipeline_tongquan.png) |
+| *Tarot UAV, Jackal UGV và Husky cùng hoạt động trong môi trường Gazebo* | *Tổng quan pipeline: LiDAR → Super-LIO → VAE → MOCHA → LAMP* |
+| ![Gazebo abandoned mine environment used for multi-robot exploration](uav_abadoned.png) | ![Bounding box detection from YOLOv8 on robot camera feeds](map_boxes.png) |
+| *Môi trường hầm mỏ bỏ hoang dùng cho thực nghiệm khám phá đa robot* | *YOLOv8 phát hiện đối tượng trên luồng camera của robot* |
+
+---
+
+## Repositories
+
+| Repository | Link | Mô tả |
+|---|---|---|
+| **runs_project** | [IVSR-RaA/runs_project](https://github.com/IVSR-RaA/runs_project) | Script khởi động toàn bộ hệ thống MRM (file này), cấu hình mạng, missions |
+| **Super-LIO** | [IVSR-RaA/Super-LIO](https://github.com/IVSR-RaA/Super-LIO) | LiDAR-Inertial Odometry (SLAM front-end) cho UAV, Jackal và Husky |
+| **super_lio_lamp_adapter** | [IVSR-RaA/super_lio_lamp_adapter](https://github.com/IVSR-RaA/super_lio_lamp_adapter) | Bridge chuyển đổi output Super-LIO → LAMP, VAE keyframe pipeline |
+| **pcl-vae** | [IVSR-RaA/pcl-vae](https://github.com/IVSR-RaA/pcl-vae) | Variational Autoencoder nén point cloud để truyền qua MOCHA |
+| **mocha_tplink** | [IVSR-RaA/mocha_tplink](https://github.com/IVSR-RaA/mocha_tplink) | Multi-robot Communication Hub — đồng bộ keyframe VAE giữa các robot qua ZeroMQ |
+| **mrm_run_launch** | [IVSR-RaA/mrm_run_launch](https://github.com/IVSR-RaA/mrm_run_launch) | ROS launch files cho toàn bộ stack (UAV, UGV, Husky, base) |
+| **cmu-planner** | [IVSR-RaA/cmu-planner](https://github.com/IVSR-RaA/cmu-planner) | CMU local planner + waypoint example cho Jackal/Husky ground navigation |
+| **emb** | [IVSR-RaA/emb](https://github.com/IVSR-RaA/emb) | PX4/geometric controller, sequence controller, EGO-Planner cho UAV |
+| **multirobot_yolo** | [IVSR-RaA/multirobot_yolo](https://github.com/IVSR-RaA/multirobot_yolo) | YOLOv8 object detection tích hợp cho tất cả robot trong hệ thống |
+
+---
+
+## Runtime Guide
 
 `run/run_mrm.sh` starts the runtime tmux session for simulation, MOCHA, VAE,
 Super-LIO, LAMP, the optional ground planners, and the UAV sequence controller.
