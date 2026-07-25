@@ -1,0 +1,26 @@
+version: 1
+# MAP HUST C7-------------------------------------------
+# Absolute Super-LIO map/world coordinates.
+# Husky starts at global x=2, so shared rendezvous points are shifted by -2 m.
+speed: 0.28
+arrival_radius: 0.9
+wait_time: 1.0
+boundary_margin: 4.0
+
+waypoints:
+  - [4.0, -4.0, 0.0]
+  - [10.0, -8.0, 0.0]
+  - [17.0, -8.0, 0.0]
+  - [23.0, -4.0, 0.0]
+  - [30.0, 2.0, 0.0]
+  - [36.0, 8.0, 0.0]
+  - [40.0, 25.0, 0.0]   # Shared global site D: [42, 25]
+  - [30.0, 20.0, 0.0]   # Shared global site C: [32, 20]
+  - [20.0, 12.0, 0.0]   # Shared global site B: [22, 12]
+  - [10.0, 3.0, 0.0]    # Shared global site A: [12, 3]
+  - [5.0, 10.0, 0.0]
+  - [0.0, 18.0, 0.0]
+  - [-8.0, 25.0, 0.0]
+  - [-16.0, 30.0, 0.0]
+  - [-24.0, 34.0, 0.0]
+  - [-32.0, 37.0, 0.0]

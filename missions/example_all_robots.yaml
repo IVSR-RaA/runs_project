@@ -1,0 +1,36 @@
+version: 1
+# MAP HUST C7------------------------------------------
+# Values are absolute coordinates. Ground robots use the Super-LIO map/world
+# origin; the UAV uses its MAVROS local ENU origin.
+defaults:
+  speed: 0.3
+  arrival_radius: 0.5
+  wait_time: 0.0
+  boundary_margin: 5.0
+
+robots:
+  jackal:
+    waypoints:
+      - [3.0, 0.0, 0.0]
+      - [3.0, 3.0, 0.0]
+      - [0.0, 3.0, 0.0]
+      - [0.0, 0.0, 0.0]
+
+  husky:
+    speed: 0.25
+    waypoints:
+      - [4.0, 0.0, 0.0]
+      - [4.0, -3.0, 0.0]
+      - [0.0, -3.0, 0.0]
+      - [0.0, 0.0, 0.0]
+
+  none_iris:
+    mode: move
+    takeoff_height: 2.0
+    timeout: 180.0
+    land: true
+    waypoints:
+      - [3.0, 0.0, 2.0]
+      - [3.0, 3.0, 2.0]
+      - [0.0, 3.0, 2.0]
+      - [0.0, 0.0, 2.0]

@@ -23,14 +23,17 @@ tools. Use the debug commands in this file from separate terminals when needed.
 - [Final Map Topics](#final-map-topics)
 - [RViz and Debug Tools](#rviz-and-debug-tools)
 - [Runtime Tuning](#runtime-tuning)
+- [Ground LiDAR and Super-LIO Extrinsics](#ground-lidar-and-super-lio-extrinsics)
 - [GNN Loop-Closure Batcher](#gnn-loop-closure-batcher)
 - [SOLiD Loop Condition](#solid-loop-condition)
+- [Mission Files](#mission-files)
 - [CMU Planners](#cmu-planners)
 - [UAV PX4 Sequence Controller](#uav-px4-sequence-controller)
 - [UAV EGO-Planner Obstacle Avoidance](#uav-ego-planner-obstacle-avoidance)
 - [VAE Model Selection](#vae-model-selection)
 - [WiFi Payload Measurement](#wifi-payload-measurement)
 - [Range Image Debug](#range-image-debug)
+- [Docker Image Storage On Another Disk](#docker-image-storage-on-another-disk)
 - [Troubleshooting Notes](#troubleshooting-notes)
 
 ## Quick Start
@@ -100,6 +103,7 @@ Command-line options:
 | `--lamp-mode base` | Use centralized LAMP at the base station. This is the default. |
 | `--lamp-mode distributed` | Run one fusion LAMP process on each selected robot master. |
 | `--distributed` | Shortcut for `--lamp-mode distributed`. |
+| `--mission FILE` | Import Jackal, Husky, and/or UAV waypoints from one YAML mission file. It automatically enables the selected robot's planner/controller. |
 | `--no-attach` | Start the tmux session without attaching to it. |
 | `--attach` | Attach to the existing `mrm-debug` tmux session. |
 | `--kill` | Stop the runtime session and its managed MOCHA/Gazebo listeners. |
@@ -536,9 +540,19 @@ Start with:
 
 ```bash
 cd /home/nlg/all_ws
-benchmark/scripts/make_run_dir.sh distributed_ld32
-rviz -d /home/nlg/all_ws/benchmark/rviz/distributed_map_compare.rviz
+./run/run_mrm.sh --only husky --no-attach
+
+# In another terminal, record action, metrics, video, and Gazebo replay data.
+DISPLAY=:1 \
+benchmark/scripts/record_experiment.sh \
+  husky_avoidance_001 husky 120 \
+  --video --screenshots --gazebo-log --planner-clouds
 ```
+
+Replace `husky` with `ugv`, `uav`, or `base` as appropriate. Open and maximize
+Gazebo or RViz before using `--video`. Results are written under
+`benchmark/results/<experiment_id>/`. See the benchmark README for artifact
+definitions, camera recording, replay commands, and fair-comparison rules.
 
 ## Network Defaults
 
@@ -1053,6 +1067,7 @@ UGV topic checks:
 
 ```bash
 rostopic hz /keyframe_vae /jackal1/lamp/keyed_scans /jackal1_fusion_base/lamp/octree_map
+rosparam get /lio/extrinsic/lidar_imu
 rostopic echo -n1 /lio/odom
 rostopic echo -n1 /jackal1_fusion_base/lamp/octree_map/header
 rosrun tf tf_monitor world jackal1/lidar
@@ -1062,6 +1077,7 @@ Husky topic checks:
 
 ```bash
 rostopic hz /keyframe_vae /husky3/lamp/keyed_scans /husky3_fusion_base/lamp/octree_map
+rosparam get /lio/extrinsic/lidar_imu
 rostopic echo -n1 /lio/odom
 rostopic echo -n1 /husky3_fusion_base/lamp/octree_map/header
 rosrun tf tf_monitor world husky3/lidar
@@ -1113,6 +1129,12 @@ cd /home/nlg/all_ws
 HUSKY_SPAWN_DELAY=12 ./run/run_mrm.sh --only husky --no-attach
 ```
 
+The default Gazebo world is:
+
+```text
+$HOME/PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic/worlds/nlg_full.world
+```
+
 Use a different Gazebo world:
 
 ```bash
@@ -1120,6 +1142,79 @@ cd /home/nlg/all_ws
 SIM_WORLD_FILE=$HOME/PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic/worlds/empty.world \
 ./run/run_mrm.sh --distributed --no-attach
 ```
+
+## Ground LiDAR and Super-LIO Extrinsics
+
+Jackal and Husky both use a simulated Velodyne VLP-16 point cloud, but their
+LiDAR mounting chains are different. The runtime keeps the Gazebo/URDF mount
+offsets and the Super-LIO LiDAR-to-IMU extrinsics separate:
+
+| Robot | Mount offset variable | Default | Super-LIO config variable | Default config file |
+| --- | --- | --- | --- | --- |
+| Jackal/UGV | `UGV_LIDAR_Z_OFFSET` | `0` | `UGV_LIO_CONFIG_FILE` | `src/Super-LIO/src/super_lio/config/velodyne_16_ugv.yaml` |
+| Husky | `HUSKY_LIDAR_Z_OFFSET` | `0` | `HUSKY_LIO_CONFIG_FILE` | `src/Super-LIO/src/super_lio/config/velodyne_16_husky.yaml` |
+| UAV | SDF camera/lidar model | model-defined | `UAV_LIO_CONFIG_FILE` | `src/Super-LIO/src/super_lio/config/velodyne_16.yaml` |
+
+`UGV_LIDAR_Z_OFFSET` and `HUSKY_LIDAR_Z_OFFSET` are only the extra mount offset
+passed into the robot xacro. They are not the final `lidar_imu` value used by
+Super-LIO. With the current default offset `0`, the ground robot extrinsics are:
+
+```text
+Jackal imu_link -> velodyne:
+  lidar_imu = [0.0, 0.0, 0.3217, I]
+
+Husky base_link -> velodyne:
+  lidar_imu = [0.0812, 0.0, 0.4090, I]
+```
+
+The full YAML form uses the translation followed by the 3 x 3 rotation matrix:
+
+```yaml
+lidar_imu: [0.0, 0.0, 0.3217,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0]
+```
+
+Super-LIO does not read the URDF/TF tree to compute this automatically. The
+runtime passes a robot-specific config file to `super_lio/velodyne_16.launch`
+through the `config_file` argument. This avoids Jackal and Husky accidentally
+sharing one `velodyne_16.yaml` when both robots run together.
+
+If you change a ground LiDAR mount offset, update the matching YAML too. The
+current transform formulas are:
+
+```text
+Jackal z = 0.184 + UGV_LIDAR_Z_OFFSET + 0.1000 + 0.0377
+Husky  x = 0.0812
+Husky  z = 0.245 + HUSKY_LIDAR_Z_OFFSET + 0.1200 + 0.0063 + 0.0377
+```
+
+For example, if `UGV_LIDAR_Z_OFFSET=0.5`, Jackal needs `z=0.8217` in
+`velodyne_16_ugv.yaml`. If `HUSKY_LIDAR_Z_OFFSET=0.5`, Husky needs `z=0.9090`
+in `velodyne_16_husky.yaml`.
+
+After starting a robot, verify that the expected config was loaded:
+
+```bash
+# Jackal/UGV master
+ROS_MASTER_URI=http://10.229.222.1:11312 rosparam get /lio/extrinsic/lidar_imu
+```
+
+```bash
+# Husky master
+ROS_MASTER_URI=http://10.229.223.1:11314 rosparam get /lio/extrinsic/lidar_imu
+```
+
+Expected defaults:
+
+```text
+Jackal: x=0.0,    y=0.0, z=0.3217
+Husky:  x=0.0812, y=0.0, z=0.4090
+```
+
+If the value is still all zeros, the robot is not using the intended
+`*_LIO_CONFIG_FILE` or a stale Super-LIO process is still running.
 
 ## GNN Loop-Closure Batcher
 
@@ -1300,6 +1395,240 @@ The source code lives in the LAMP workspace:
 /home/nlg/catkin1_ws/src/localizer_lamp/loop_closure/config/laser_parameters.yaml
 ```
 
+## Mission Files
+
+Use one YAML file to run a waypoint path without clicking goals in RViz. The
+runtime converts the readable file into CMU PLY files for Jackal/Husky and a
+native PX4 sequence-controller YAML for `none_iris`.
+
+An example for all three robots is included:
+
+```text
+/home/nlg/all_ws/run/missions/example_all_robots.yaml
+```
+
+Run one robot:
+
+```bash
+cd /home/nlg/all_ws
+
+./run/run_mrm.sh --only ugv \
+  --mission run/missions/example_all_robots.yaml --no-attach
+
+./run/run_mrm.sh --only husky \
+  --mission run/missions/example_all_robots.yaml --no-attach
+
+./run/run_mrm.sh --only uav \
+  --mission run/missions/example_all_robots.yaml --no-attach
+```
+
+For the real overlap trajectory, the mission waypoints are local to each
+robot's own start. Set the matching spawn and map offsets to place each local
+route in Gazebo and in the shared LAMP frame. Husky is placed near the origin
+instead of its source/global start to make the single-robot run easier:
+
+```bash
+cd /home/nlg/all_ws
+./run/run_mrm.sh --kill
+
+SIM_WORLD_FILE=$HOME/PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic/worlds/complex.world \
+UGV_SPAWN_X=0.0000 \
+UGV_SPAWN_Y=0.0000 \
+UGV_MAP_X=0.0000 \
+UGV_MAP_Y=0.0000 \
+UGV_ENABLE_CMU_PLANNER=true \
+UGV_CMU_RUN_WAYPOINTS=true \
+./run/run_mrm.sh --only ugv \
+  --mission run/missions/run_mrm_all_robots_real_overlap.yaml --no-attach
+```
+
+```bash
+cd /home/nlg/all_ws
+./run/run_mrm.sh --kill
+
+SIM_WORLD_FILE=$HOME/PX4-Autopilot/Tools/simulation/gazebo-classic/sitl_gazebo-classic/worlds/complex.world \
+HUSKY_SPAWN_X=2.0000 \
+HUSKY_SPAWN_Y=0.0000 \
+HUSKY_MAP_X=2.0000 \
+HUSKY_MAP_Y=0.0000 \
+HUSKY_ENABLE_CMU_PLANNER=true \
+HUSKY_CMU_RUN_WAYPOINTS=true \
+./run/run_mrm.sh --only husky \
+  --mission run/missions/run_mrm_all_robots_real_overlap.yaml --no-attach
+```
+
+`*_SPAWN_X/Y` chooses where the model starts in Gazebo. `*_MAP_X/Y` places
+that robot's local Super-LIO/LAMP map in the shared global frame. The CMU
+waypoints themselves are not shifted by these environment variables, so keep
+the mission waypoints local when a robot starts from a nonzero global point.
+
+Run all selected robots from the same file:
+
+```bash
+cd /home/nlg/all_ws
+./run/run_mrm.sh \
+  --mission run/missions/example_all_robots.yaml --no-attach
+```
+
+Run centralized mode with one mission file per robot:
+
+```bash
+cd /home/nlg/all_ws
+sudo -v
+./run/run_centralized_distinct_missions.sh --no-attach
+```
+
+`run_centralized_distinct_missions.sh` first stops any old runtime, unsets
+`UAV_SEQUENCE_YAML`, sets the default world to `nlg_full.world`, enables the UAV
+EGO planner/camera, enables the Husky CMU planner, and delegates to
+`run_mrm.sh --only all` with per-robot mission arguments.
+
+This profile uses these default mission files:
+
+| Robot | Mission variable | Default mission |
+| --- | --- | --- |
+| Jackal | `UGV_MISSION_FILE` | `run/missions/ugv_abandoned.yaml` |
+| Husky | `HUSKY_MISSION_FILE` | `run/missions/husky_abandoned.yaml` |
+| `none_iris` | `UAV_MISSION_FILE` | `run/missions/central_uav.yaml` |
+
+Override any of those variables to run a different file while keeping the same
+profile defaults. If a default mission file is absent in your checkout, pass an
+existing file through the matching `*_MISSION_FILE` variable or the
+`--ugv-mission`, `--husky-mission`, and `--uav-mission` options.
+
+Use mission files with shared or nearby path segments when you want inter-robot
+loop candidates. Overlap points do not publish `manual_loop_closure` messages by
+themselves; they make the robots collect scans at overlapping places so LAMP
+proximity/SOLiD/manual inspection has useful inter-robot loop candidates.
+
+Check candidates on the base master:
+
+```bash
+source /home/nlg/all_ws/devel/setup.bash
+export ROS_MASTER_URI=http://10.229.221.1:11311
+export ROS_IP=10.229.221.1
+rostopic hz /base1/lamp/loop_generation/raw_loop_candidates
+rostopic hz /base1/lamp/loop_generation/loop_candidates
+rostopic hz /base1/lamp/prioritization/prioritized_loop_candidates
+```
+
+If you need to force a true manual loop closure after inspecting key IDs near a
+rendezvous site, use LAMP's manual publisher on the base master:
+
+```bash
+cd /home/nlg/catkin1_ws/src/localizer_lamp/lamp/scripts
+python3 manual_LC_publish.py base1 a30 b42
+```
+
+Use `a<number>` for Jackal, `b<number>` for `none_iris`, and `c<number>` for
+Husky. Replace the numbers with the real keyframe IDs you inspect near the
+rendezvous site. Only force manual loop closures for keyframes that were
+actually observed at the same place; the helper publishes an identity relative
+transform.
+
+The canonical UAV name is `none_iris`. The converter also accepts `uav` and
+the common typo `non_iris` as section aliases.
+
+Mission format (`path:` may be used instead of `waypoints:`):
+
+```yaml
+version: 1
+
+defaults:
+  speed: 0.3
+  arrival_radius: 0.5
+  wait_time: 0.0
+  boundary_margin: 5.0
+
+robots:
+  jackal:
+    waypoints:
+      - [3.0, 0.0, 0.0]
+      - [3.0, 3.0, 0.0]
+
+  husky:
+    speed: 0.2
+    waypoints:
+      - [4.0, 0.0, 0.0]
+      - [4.0, -3.0, 0.0]
+
+  none_iris:
+    mode: move
+    takeoff_height: 2.0
+    timeout: 180.0
+    land: true
+    waypoints:
+      - [3.0, 0.0, 2.0]
+      - [3.0, 3.0, 2.0]
+```
+
+Ground coordinates are absolute in the Super-LIO `map`/`world` frame. UAV
+coordinates are absolute in the MAVROS local ENU frame. Always provide a safe
+positive `z` for UAV waypoints.
+
+Ground mission options:
+
+| Key | Meaning |
+| --- | --- |
+| `speed` | Waypoint command speed in m/s. |
+| `arrival_radius` | XY distance at which the current waypoint is complete. |
+| `wait_time` | Pause in seconds before advancing to the next waypoint. |
+| `boundary_margin` | Automatic rectangular navigation-boundary margin. |
+| `boundary` | Optional explicit polygon as a list of `[x, y, z]` points. |
+
+UAV mission options:
+
+| Key | Meaning |
+| --- | --- |
+| `mode: move` | Direct local-position waypoint execution; it does not avoid obstacles. |
+| `mode: avoid` | Route the waypoint stage through EGO-Planner; the runtime enables EGO automatically. |
+| `takeoff_height` | Initial takeoff height above the local origin. |
+| `timeout` | Timeout for the waypoint stage. |
+| `takeoff_timeout` | Timeout for takeoff. |
+| `land_timeout` | Timeout for landing. |
+| `land` | Add or omit the final landing stage. |
+
+For different files per robot, use environment variables:
+
+```bash
+cd /home/nlg/all_ws
+UGV_MISSION_FILE=/absolute/path/jackal.yaml \
+HUSKY_MISSION_FILE=/absolute/path/husky.yaml \
+UAV_MISSION_FILE=/absolute/path/uav.yaml \
+./run/run_mrm.sh --no-attach
+```
+
+Or pass the per-robot mission files directly on the command line:
+
+```bash
+cd /home/nlg/all_ws
+./run/run_mrm.sh --only all \
+  --ugv-mission /absolute/path/jackal.yaml \
+  --husky-mission /absolute/path/husky.yaml \
+  --uav-mission /absolute/path/uav.yaml \
+  --no-attach
+```
+
+`--mission FILE` remains a shortcut for using one combined mission file for all
+selected robots. If both forms are provided, the later command-line option wins
+for that robot.
+
+A per-robot file may use a simple top-level `waypoints:` or `path:` list
+instead of a `robots:` mapping. Generated files are stored under
+`/tmp/run_mrm_<session>/` and are removed by `./run/run_mrm.sh --kill`.
+
+Verify mission execution:
+
+```bash
+# Jackal or Husky master:
+rostopic echo -n1 /way_point
+rostopic hz /path /terrain_map
+
+# UAV master:
+rosnode info /sequence_controller_parser
+rostopic echo /sequence/status
+```
+
 ## CMU Planners
 
 | Robot | Planner default | State input | Scan input | Velocity output |
@@ -1363,8 +1692,36 @@ rostopic hz /path /terrain_map /way_point /cmd_vel /jackal_velocity_controller/c
 Planner RViz:
 
 ```bash
+source /home/nlg/all_ws/devel/setup.bash
+export ROS_MASTER_URI=http://10.229.222.1:11312
+export ROS_IP=10.229.222.1
 rviz -d /home/nlg/all_ws/src/cmu-planner/vehicle_simulator/rviz/vehicle_simulator.rviz
 ```
+
+The project RViz view uses `map` as its fixed frame and follows `vehicle`.
+Its main displays are:
+
+```text
+/lio/cloud_world   Super-LIO registered world cloud
+/terrain_map       CMU terrain analysis
+/path              selected local path
+/free_paths        collision-free path candidates
+/way_point         current waypoint
+```
+
+If the view is empty, verify the planner inputs and frame chain:
+
+```bash
+rostopic hz /mid/points /lio/odom /lio/cloud_world
+rostopic hz /terrain_map /path /free_paths /way_point
+rosrun tf tf_echo map vehicle
+rosnode info /terrainAnalysis
+rosnode info /localPlanner
+```
+
+`map -> vehicle` must be available, and `/lio/cloud_world` must update. The
+launch integration creates `map -> sensor` from `/lio/odom`; CMU provides the
+static `sensor -> vehicle` transform.
 
 ### Husky Planner
 
@@ -1375,6 +1732,31 @@ cd /home/nlg/all_ws
 HUSKY_ENABLE_CMU_PLANNER=true \
 ./run/run_mrm.sh --only husky --no-attach
 ```
+
+The Husky planner uses a conservative `1.10 x 0.75 m` footprint, enables
+rotation obstacle checks, and keeps `pathScale=1.50`. CMU's path library has a
+precomputed `0.45 m` collision radius, so this scale gives approximately
+`0.675 m` of path clearance instead of shrinking clearance at low speed.
+Override these only when the physical model or path library changes:
+
+```bash
+HUSKY_CMU_VEHICLE_LENGTH=1.10 \
+HUSKY_CMU_VEHICLE_WIDTH=0.75 \
+HUSKY_CMU_PATH_SCALE=1.50 \
+HUSKY_CMU_MIN_PATH_SCALE=1.50 \
+HUSKY_CMU_PATH_SCALE_BY_SPEED=false \
+HUSKY_ENABLE_CMU_PLANNER=true \
+./run/run_mrm.sh --only husky --no-attach
+```
+
+This profile was checked in Gazebo with a static `1 x 1 x 1 m` box placed
+about `3 m` ahead of Husky. The obstacle appeared in `/terrain_map`, Husky
+cleared it without entering the configured `1.10 x 0.75 m` footprint, and the
+measured minimum robot-to-obstacle center distance was `1.526 m`.
+
+Do not enable `HUSKY_CMU_PATH_SCALE_BY_SPEED=true` without regenerating or
+retuning the CMU path correspondence table. At low speed it also shrinks the
+effective obstacle clearance.
 
 Disable automatic waypoint following while keeping the planner available:
 
@@ -1389,8 +1771,10 @@ Husky planner outputs include:
 
 ```text
 /husky/cmd_vel
+/husky/husky_velocity_controller/cmd_vel
 /cmd_vel2
 /path
+/free_paths
 /terrain_map
 /way_point
 ```
@@ -1401,21 +1785,118 @@ Check it on the Husky master:
 source /home/nlg/all_ws/devel/setup.bash
 export ROS_MASTER_URI=http://10.229.223.1:11314
 export ROS_IP=10.229.223.1
-rostopic hz /lio/odom /lio/cloud_world /path /terrain_map /way_point /husky/cmd_vel
+rostopic hz /lio/odom /lio/cloud_world /terrain_map /path /free_paths
+rostopic hz /way_point /husky/cmd_vel /husky/husky_velocity_controller/cmd_vel
+rosrun tf tf_echo map vehicle
 ```
+
+Open the CMU planner RViz preset on the Husky master:
+
+```bash
+source /home/nlg/all_ws/devel/setup.bash
+export ROS_MASTER_URI=http://10.229.223.1:11314
+export ROS_IP=10.229.223.1
+rviz -d /home/nlg/all_ws/src/cmu-planner/vehicle_simulator/rviz/vehicle_simulator.rviz
+```
+
+### Send A Manual Navigation Goal
+
+The CMU planner consumes `geometry_msgs/PointStamped` goals on `/way_point`.
+Goals are expressed in the `map` frame, which this integration aligns with the
+Super-LIO `world` frame.
+
+Disable the built-in waypoint file when you want to send goals manually.
+Otherwise `waypointExample` republishes its own goal and overwrites yours.
+
+Jackal:
+
+```bash
+cd /home/nlg/all_ws
+UGV_CMU_RUN_WAYPOINTS=false \
+./run/run_mrm.sh --only ugv --no-attach
+```
+
+Husky:
+
+```bash
+cd /home/nlg/all_ws
+HUSKY_ENABLE_CMU_PLANNER=true \
+HUSKY_CMU_RUN_WAYPOINTS=false \
+./run/run_mrm.sh --only husky --no-attach
+```
+
+To select a goal in RViz, connect to the robot master and open the planner
+preset:
+
+```bash
+# Use 10.229.222.1:11312 for Jackal or 10.229.223.1:11314 for Husky.
+export ROS_MASTER_URI=http://10.229.223.1:11314
+export ROS_IP=10.229.223.1
+rviz -d /home/nlg/all_ws/src/cmu-planner/vehicle_simulator/rviz/vehicle_simulator.rviz
+```
+
+In RViz:
+
+1. Confirm `Fixed Frame` is `map`.
+2. Select the `Publish Point` toolbar tool.
+3. Click the desired location in the point cloud or terrain map.
+
+The preset publishes the clicked point directly to `/way_point`. You can also
+send a goal from a terminal:
+
+```bash
+rostopic pub -1 /way_point geometry_msgs/PointStamped \
+  "header: {frame_id: 'map'}
+point: {x: 10.0, y: 5.0, z: 0.0}"
+```
+
+Replace `x` and `y` with the desired Super-LIO map coordinates. The planner
+uses only `x` and `y` for a ground robot.
+
+Verify that the goal produces a path and velocity command:
+
+```bash
+rostopic echo -n1 /way_point
+rostopic hz /terrain_map
+rostopic hz /path
+
+# Jackal:
+rostopic hz /cmd_vel /jackal_velocity_controller/cmd_vel
+
+# Husky:
+rostopic hz /husky/cmd_vel /husky/husky_velocity_controller/cmd_vel
+```
+
+Stop the robot immediately:
+
+```bash
+rostopic pub -1 /stop std_msgs/Int8 "data: 1"
+```
+
+Release the stop:
+
+```bash
+rostopic pub -1 /stop std_msgs/Int8 "data: 0"
+```
+
+CMU is a local planner: it chooses collision-free short paths that point toward
+the goal. It does not maintain a global costmap or compute a global route, so
+an arbitrary goal behind large or concave obstacles may be unreachable without
+intermediate waypoints.
 
 ## UAV PX4 Sequence Controller
 
 `./run/run_mrm.sh --only uav` starts the PX4 sequence-controller wrapper by
-default. The run-mrm default mission is:
+default. The run-mrm default readable mission is:
 
 ```text
-/home/nlg/all_ws/src/emb/px4_controllers/sequence_controller/cfg/run_mrm_uav_takeoff_land.yaml
+/home/nlg/all_ws/run/missions/central_uav.yaml
 ```
 
-It starts `geometric_controller`, waits for MAVROS local pose, then runs the
-sequence parser. The default sequence takes off to 2 m and lands. It does not
-use GPS.
+`prepare_mission_file.py` converts that file into
+`/tmp/run_mrm_<session>/uav_sequence.yaml` before the sequence parser starts.
+Set `USE_DEFAULT_MISSIONS=false` to return to the low-level fallback
+`UAV_SEQUENCE_YAML`.
 
 Disable it for mapping-only UAV runs:
 
@@ -1607,30 +2088,107 @@ PointCloud2  /grid_map/occupancy_inflate
 Marker       /planning/bspline
 Path         /waypoint_generator/waypoints
 ```
+## Continue fly with other mission 
+
+After run mission A for drone, the following command will run next mission:
+To run a new UAV mission without restarting Gazebo/PX4:
+```bash 
+cd /home/nlg/all_ws
+source devel/setup.bash
+export ROS_MASTER_URI=http://10.249.171.1:11313
+export ROS_IP=10.249.171.1
+
+python3 src/mrm_run_launch/scripts/prepare_mission_file.py \
+  --mission run/missions/new_uav.yaml \
+  --role uav \
+  --output /tmp/new_uav_sequence.yaml
+
+roslaunch sequence_controller sequence_controller.launch \
+  sequence_yaml:=/tmp/new_uav_sequence.yaml \
+  run_external_scripts:=false \
+  ready_topic:=/mavros/local_position/pose
+```
+### From manual cmd :
+
+For UAV waypoint mission, the clean interface is **ROS service**, not `rostopic pub`:
+
+```bash
+source /home/nlg/all_ws/devel/setup.bash
+export ROS_MASTER_URI=http://10.249.171.1:11313
+export ROS_IP=10.249.171.1
+```
+
+Send one new UAV waypoint through the sequence/local waypoint server:
+
+```bash
+rosservice call /sequence/start "seq: 10
+sub: 0.0
+target:
+  header:
+    frame_id: 'avoid'
+  poses:
+  - position:
+      x: 4.0
+      y: 2.0
+      z: 2.0
+    orientation:
+      w: 1.0"
+```
+
+Use `frame_id: 'avoid'` for EGO-Planner obstacle avoidance. Use `frame_id: 'move'` for direct local movement without EGO.
+
+You can use `rostopic pub` directly to EGO-Planner like this:
+
+```bash
+rostopic pub -1 /waypoint_generator/waypoints nav_msgs/Path "header:
+  frame_id: 'map'
+poses:
+- header:
+    frame_id: 'map'
+  pose:
+    position: {x: 4.0, y: 2.0, z: 2.0}
+    orientation: {w: 1.0}"
+```
+
+But before that, the controller may need mission mode:
+
+```bash
+rosservice call /controller/set_mode "mode: 3
+sub: 0.0
+timeout: 60.0
+seq: 10
+failsafe: false"
+```
+
+So short answer:
+
+- New sequence mission: use `rosservice call /sequence/start`, not `rostopic pub`.
+- Direct EGO goal: yes, use `rostopic pub /waypoint_generator/waypoints`.
+- Always set UAV `z` positive, for example `z: 2.0`.
 
 ## VAE Model Selection
 
-All three simulated robots currently use Velodyne VLP-16 style input through
-Super-LIO, so all three default to the pcl-vae `ground` config:
+The default VAE robot types live in `run/lib/config.sh`:
 
 ```text
-UAV_VAE_ROBOT_TYPE=ground
+UAV_VAE_ROBOT_TYPE=aerial
 UGV_VAE_ROBOT_TYPE=ground
 HUSKY_VAE_ROBOT_TYPE=ground
 ```
 
-Default ground model:
+Default ground model for Jackal/Husky:
 
 ```text
 /home/nlg/all_ws/src/pcl-vae/pcl_vae/weights/ground_model_LD_32_epoch_20_batch_16_range_20_voxel_20.pth
 ```
 
-The encoder and every decoder must use the same VAE robot type for the same
-robot. If the UAV later changes back to an Ouster 64 aerial setup:
+Default aerial model for the UAV is selected by the pcl-vae aerial config. The
+encoder and every decoder must use the same VAE robot type for the same robot.
+Override the type only when the sensor/range-image model changes:
 
 ```bash
 cd /home/nlg/all_ws
-UAV_VAE_ROBOT_TYPE=aerial ./run/run_mrm.sh --distributed --no-attach
+UAV_VAE_ROBOT_TYPE=ground ./run/run_mrm.sh --distributed --no-attach
 ```
 
 ## WiFi Payload Measurement
@@ -1755,6 +2313,19 @@ roslaunch super_lio_lamp_adapter range_image_visualizer.launch \
   output_range_image_topic:=/jackal1/reconstructed/range_image
 ```
 
+## Docker Image Storage On Another Disk
+
+```bash
+sudo systemctl stop docker docker.socket
+
+sudo du -sh /var/lib/docker
+
+sudo mv /var/lib/docker /var/lib/docker.old
+sudo mkdir -p /var/lib/docker
+
+sudo systemctl start docker
+```
+
 ## Troubleshooting Notes
 
 UAV mapping uses Super-LIO pose and cloud together:
@@ -1787,6 +2358,23 @@ cd /home/nlg/all_ws
 ./run/run_mrm.sh --kill
 nvidia-smi
 ```
+
+If Jackal or Husky Super-LIO drifts badly while wheel odometry remains near the
+ground plane, check the loaded LiDAR-to-IMU extrinsic before tuning planner
+speeds:
+
+```bash
+# Jackal/UGV master
+ROS_MASTER_URI=http://10.229.222.1:11312 rosparam get /lio/extrinsic/lidar_imu
+
+# Husky master
+ROS_MASTER_URI=http://10.229.223.1:11314 rosparam get /lio/extrinsic/lidar_imu
+```
+
+The defaults should match the values in
+[Ground LiDAR and Super-LIO Extrinsics](#ground-lidar-and-super-lio-extrinsics).
+If they are all zeros, Super-LIO is using the generic `velodyne_16.yaml` instead
+of the robot-specific config.
 
 If distributed maps look different, first confirm every distributed master has
 all three keyed-scan topics. With three robots, every distributed master should see

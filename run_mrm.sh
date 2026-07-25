@@ -19,6 +19,13 @@ Usage:
                   distributed runs one fusion LAMP process on each robot master.
   $0 --distributed
                   Shortcut for --lamp-mode distributed.
+  $0 --mission FILE
+                  Load robot waypoints from one MRM mission YAML file.
+                  The selected Jackal, Husky, and UAV groups use their
+                  respective sections from that file.
+  $0 --ugv-mission FILE --husky-mission FILE --uav-mission FILE
+                  Load independent mission YAML files for Jackal, Husky, and
+                  UAV. These options can also override --mission per robot.
   USE_SOLID_LOOP_CONDITION=true $0 --no-attach
                   Enable SOLiD descriptor filtering before LAMP loop verification.
   HUSKY_START_DELAY=300 $0 --distributed --no-attach
@@ -76,6 +83,96 @@ while [[ $# -gt 0 ]]; do
     --lamp-mode) LAMP_MODE="${2:-}"; shift 2 ;;
     --lamp-mode=*) LAMP_MODE="${1#*=}"; shift ;;
     --distributed) LAMP_MODE="distributed"; shift ;;
+    --mission)
+      if [[ -z "${2:-}" ]]; then
+        echo "[usage][ERROR] --mission requires a YAML file." >&2
+        exit 1
+      fi
+      MRM_MISSION_FILE="$2"
+      UGV_MISSION_FILE="$2"
+      HUSKY_MISSION_FILE="$2"
+      UAV_MISSION_FILE="$2"
+      UGV_ENABLE_CMU_PLANNER="true"
+      UGV_CMU_RUN_WAYPOINTS="true"
+      HUSKY_ENABLE_CMU_PLANNER="true"
+      HUSKY_CMU_RUN_WAYPOINTS="true"
+      UAV_ENABLE_SEQUENCE_CONTROLLER="true"
+      shift 2
+      ;;
+    --mission=*)
+      MRM_MISSION_FILE="${1#*=}"
+      if [[ -z "$MRM_MISSION_FILE" ]]; then
+        echo "[usage][ERROR] --mission requires a YAML file." >&2
+        exit 1
+      fi
+      UGV_MISSION_FILE="$MRM_MISSION_FILE"
+      HUSKY_MISSION_FILE="$MRM_MISSION_FILE"
+      UAV_MISSION_FILE="$MRM_MISSION_FILE"
+      UGV_ENABLE_CMU_PLANNER="true"
+      UGV_CMU_RUN_WAYPOINTS="true"
+      HUSKY_ENABLE_CMU_PLANNER="true"
+      HUSKY_CMU_RUN_WAYPOINTS="true"
+      UAV_ENABLE_SEQUENCE_CONTROLLER="true"
+      shift
+      ;;
+    --ugv-mission)
+      if [[ -z "${2:-}" ]]; then
+        echo "[usage][ERROR] --ugv-mission requires a YAML file." >&2
+        exit 1
+      fi
+      UGV_MISSION_FILE="$2"
+      UGV_ENABLE_CMU_PLANNER="true"
+      UGV_CMU_RUN_WAYPOINTS="true"
+      shift 2
+      ;;
+    --ugv-mission=*)
+      UGV_MISSION_FILE="${1#*=}"
+      if [[ -z "$UGV_MISSION_FILE" ]]; then
+        echo "[usage][ERROR] --ugv-mission requires a YAML file." >&2
+        exit 1
+      fi
+      UGV_ENABLE_CMU_PLANNER="true"
+      UGV_CMU_RUN_WAYPOINTS="true"
+      shift
+      ;;
+    --husky-mission)
+      if [[ -z "${2:-}" ]]; then
+        echo "[usage][ERROR] --husky-mission requires a YAML file." >&2
+        exit 1
+      fi
+      HUSKY_MISSION_FILE="$2"
+      HUSKY_ENABLE_CMU_PLANNER="true"
+      HUSKY_CMU_RUN_WAYPOINTS="true"
+      shift 2
+      ;;
+    --husky-mission=*)
+      HUSKY_MISSION_FILE="${1#*=}"
+      if [[ -z "$HUSKY_MISSION_FILE" ]]; then
+        echo "[usage][ERROR] --husky-mission requires a YAML file." >&2
+        exit 1
+      fi
+      HUSKY_ENABLE_CMU_PLANNER="true"
+      HUSKY_CMU_RUN_WAYPOINTS="true"
+      shift
+      ;;
+    --uav-mission)
+      if [[ -z "${2:-}" ]]; then
+        echo "[usage][ERROR] --uav-mission requires a YAML file." >&2
+        exit 1
+      fi
+      UAV_MISSION_FILE="$2"
+      UAV_ENABLE_SEQUENCE_CONTROLLER="true"
+      shift 2
+      ;;
+    --uav-mission=*)
+      UAV_MISSION_FILE="${1#*=}"
+      if [[ -z "$UAV_MISSION_FILE" ]]; then
+        echo "[usage][ERROR] --uav-mission requires a YAML file." >&2
+        exit 1
+      fi
+      UAV_ENABLE_SEQUENCE_CONTROLLER="true"
+      shift
+      ;;
     *) echo "[usage][ERROR] unknown argument: $1" >&2; usage; exit 1 ;;
   esac
 done
@@ -151,6 +248,11 @@ source "$SCRIPT_DIR/lib/husky_tasks.sh"
 source "$SCRIPT_DIR/lib/base_tasks.sh"
 # shellcheck source=/home/nlg/all_ws/run/lib/common_tasks.sh
 source "$SCRIPT_DIR/lib/common_tasks.sh"
+
+if ! prepare_mission_assets; then
+  echo "[mission] fatal mission preparation failed." >&2
+  exit 1
+fi
 
 if ! preflight_checks; then
   echo "[preflight] fatal checks failed; fix errors above or override the related environment variables." >&2
