@@ -11,7 +11,7 @@
 | ![Three robots (Tarot UAV, Jackal UGV, Husky) deployed together in Gazebo simulation](tarot_jackal_husky.png) | ![Full system pipeline overview from LiDAR sensing to collaborative map fusion](pipeline_tongquan.png) |
 | *Tarot UAV, Jackal UGV and Husky operating together in the Gazebo simulation environment* | *System pipeline overview: LiDAR → Super-LIO → VAE → MOCHA → LAMP* |
 | ![Gazebo abandoned mine environment used for multi-robot exploration](uav_abadoned.png) | ![Bounding box detection from YOLOv8 on robot camera feeds](map_boxes.png) |
-| *Abandoned mine environment used for multi-robot exploration experiments* | *YOLOv8 object detection on robot camera streams* |
+| *Abandoned mine environment used for multi-robot exploration experiments* | *Full map - boxes type* |
 
 ---
 
